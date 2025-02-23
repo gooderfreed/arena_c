@@ -6,35 +6,42 @@
 
 ## Overview
 
-This library provides a header-only implementation of an arena memory allocator in C. Arena allocation is a memory management technique that allocates memory in large chunks (arenas) and then subdivides those chunks into smaller blocks for application use. This approach offers significant performance benefits and control over memory allocation and deallocation, especially in scenarios with frequent allocations and deallocations of objects of similar sizes.
+This library provides a header-only implementation of an arena memory allocator in C. Arena allocation is a memory management technique that allocates memory in large chunks (arenas) and then subdivides those chunks into smaller blocks for application use. This approach offers significant performance benefits and control over memory allocation and deallocation, especially in scenarios with frequent allocations and deallocations of objects of similar lifecycles.
 
 **Key Benefits of Arena Allocation:**
 
-*   **Performance:** Faster allocation and deallocation compared to general-purpose allocators like `malloc`/`free`, especially for allocating and freeing many small objects.
-*   **Efficiency:** Reduced memory fragmentation, leading to better memory utilization.
-*   **Control:**  Deterministic deallocation - freeing the entire arena at once is very fast and predictable.
+*   **Performance:** Faster allocation and deallocation compared to general-purpose allocators like `malloc`/`free`, especially for allocating and freeing many small objects within the arena's lifecycle.
+*   **Efficiency:** Reduced memory fragmentation, leading to better memory utilization within the arena.
+*   **Control:**  Deterministic deallocation - freeing the entire arena at once is very fast and predictable.  Individual blocks can also be freed for memory reuse within the arena.
 *   **Simplicity:**  Easy to integrate into C projects as a header-only library.
 
 **When to Use Arena Allocation:**
 
-*   Game development:  For managing game objects, particles, and temporary data.
-*   Real-time systems:  Where predictable allocation and deallocation times are crucial.
-*   Parsing and data processing:  For managing temporary data structures during parsing or processing large datasets.
-*   Any application where you need to allocate and deallocate many objects of similar sizes in a controlled and efficient manner.
+*   Game development:  For managing game objects, particles, and temporary data that are often created and destroyed together.
+*   Real-time systems:  Where predictable allocation and deallocation times are crucial for performance consistency.
+*   Parsing and data processing:  For managing temporary data structures during parsing or processing large datasets that can be efficiently deallocated in bulk.
+*   Any application where you need to allocate and deallocate many objects, especially of similar sizes and lifecycles, in a controlled and efficient manner.
 
 ## Features
 
 *   **Header-Only Library:**  Easy integration - just include `arena_allocator.h` in your project.
 *   **Static and Dynamic Arena Creation:**
-    *   **Static Arena:**  Create arenas in pre-allocated memory regions for maximum control and predictability.
-    *   **Dynamic Arena:**  Dynamically allocate arena memory using `malloc`.
-*   **Fast Allocation and Deallocation:**  Optimized for speed, especially for frequent allocations and deallocations within the arena.
-*   **Memory Efficiency:**  Reduces fragmentation and improves memory utilization.
-*   **Arena Reset:**  Quickly reset the entire arena, freeing all allocated blocks at once.
+    *   **Static Arena:**  Create arenas within pre-allocated memory regions (e.g., on the stack or in a global buffer) for maximum control and predictability.
+    *   **Dynamic Arena:**  Dynamically allocate arena memory from the heap using `malloc`.
+*   **Fast Allocation and Deallocation:**  Optimized for speed, especially for frequent allocations and deallocations within the arena. Allocation prioritizes O(1) tail allocation for speed and falls back to O(n) free block search when necessary.
+*   **Block-Level Deallocation (`arena_free_block`):**  Allows freeing individual blocks within the arena, enabling memory reuse and finer-grained control over memory management beyond full arena resets.
+*   **Memory Efficiency:**  Reduces fragmentation and improves memory utilization, especially when managing many objects within a defined memory scope.
+*   **Arena Reset:**  Quickly reset the entire arena, marking all allocated blocks as free for reuse, offering a fast way to bulk-deallocate memory.
 *   **Debugging Tools:**  Includes `print_arena` and `print_fancy` functions (enabled via `DEBUG` macro) for detailed arena state inspection and visualization during development.
-*   **Customizable Minimum Block Size:**  Adjust `MIN_BUFFER_SIZE` macro to fine-tune memory usage based on your application needs.
+*   **Customizable Minimum Block Size:**  Adjust `MIN_BUFFER_SIZE` macro in `arena_allocator.h` to fine-tune memory usage and fragmentation behavior based on your application's specific allocation patterns.
+*   **Embedded Arena Metadata:** The arena's metadata structures are embedded directly within the allocated memory block, minimizing external dependencies but slightly reducing the total usable memory within the arena.
 *   **Clear and Well-Commented Code:**  Easy to understand and modify.
 *   **MIT License:**  Permissive open-source license.
+
+**Important Considerations:**
+
+*   **Arena Metadata Overhead:**  The arena metadata (e.g., block headers) consumes a small portion of the allocated arena memory. While relatively small (56 bytes per block header), this overhead can become significant if you allocate a very large number of extremely small, individual objects separately.  **It is NOT RECOMMENDED to use arena allocation for scenarios requiring allocation of a vast quantity of tiny, independent objects.**  For optimal efficiency, arena allocation is best suited for managing larger objects or groups of related objects with similar lifecycles.
+*   **Memory Locality:** Arena allocation can improve memory locality, as objects allocated within the same arena are likely to be physically close in memory, potentially improving cache performance.
 
 ## Getting Started
 
@@ -101,7 +108,7 @@ int main() {
 }
 ```
 
-### 4. Allocate Memory from the Arena
+### 4. Allocate and Free Memory Blocks from the Arena
 
 ```c
 Arena *arena = arena_new_dynamic(1024 * 1024);
@@ -124,25 +131,36 @@ if (my_point) {
     my_point->y = 20;
 }
 
+// Free individual blocks when no longer needed (optional, but allows memory reuse within the arena)
+arena_free_block(arena, my_int);
+arena_free_block(arena, my_point);
+
+// Allocate memory again, potentially reusing freed blocks
+int *my_int_reused = (int *)arena_alloc(arena, sizeof(int));
+if (my_int_reused) {
+    *my_int_reused = 100;
+}
+
+
 // ... use allocated memory ...
 
-arena_free(arena);
+arena_free(arena); // Free the entire arena when done
 ```
 
-### 5. Free Memory (Whole Arena at Once)
+### 5. Free Memory (Arena-Level Deallocation)
 
-Arena allocators are designed for bulk deallocation.  To free all memory allocated from an arena, you typically **free or reset the entire arena**, not individual blocks:
+Arena allocators are primarily designed for bulk deallocation.  You can choose to free individual blocks using `arena_free_block` for memory reuse, or you can efficiently deallocate all memory associated with the arena at once using:
 
 **Free Dynamic Arena:**
 
 ```c
-arena_free(arena); // Frees memory allocated by arena_new_dynamic
+arena_free(arena); // Frees memory allocated by arena_new_dynamic, including all blocks within it.
 ```
 
 **Reset Arena (For both static and dynamic arenas):**
 
 ```c
-arena_reset(arena); // Resets the arena, making all blocks free again, but without freeing the arena's memory itself.
+arena_reset(arena); // Resets the arena, marking all blocks as free and ready for reuse, but without freeing the arena's underlying memory itself.  Useful for reusing the arena for a new phase of allocation.
 ```
 
 ### 6. Debugging with `print_arena` and `print_fancy`
@@ -153,13 +171,13 @@ To enable debugging output, compile your code with the `DEBUG` macro defined:
 gcc -DDEBUG your_code.c arena_impl.c -o your_program
 ```
 
-Then, you can call `print_arena(arena)` or `print_fancy(arena)` to print detailed information about the arena's state to the console, which can be helpful for debugging memory allocation issues.
+Then, you can call `print_arena(arena)` or `print_fancy(arena)` to print detailed information about the arena's state to the console, which can be helpful for debugging memory allocation issues and understanding arena behavior.
 
 ### Customization
 
 **`MIN_BUFFER_SIZE` Macro:**
 
-You can adjust the `MIN_BUFFER_SIZE` macro in `arena_allocator.h` to control the minimum size of free blocks that are kept after splitting.  Experiment with different values to optimize for your specific use case.
+You can adjust the `MIN_BUFFER_SIZE` macro in `arena_allocator.h` to control the minimum size of free blocks that are kept after splitting.  Experiment with different values to optimize for your specific use case and balance memory usage with allocation speed.
 
 ## License
 
@@ -168,4 +186,3 @@ This library is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
