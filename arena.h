@@ -9,6 +9,11 @@
     #define MIN_BUFFER_SIZE 16
 #endif
 
+#define RED false
+#define BLACK true
+
+#define block_data(block) ((void *)((char *)(block) + sizeof(Block)))
+
 // Structure type declarations for memory management.
 typedef struct Block Block;
 typedef struct Arena Arena;
@@ -19,13 +24,15 @@ typedef struct Arena Arena;
  */
 struct Block {
     size_t size;          // Size of the data block.
-    void *data;           // Pointer to the start of user data in this block.
-    Block *next;          // Pointer to the next block in the global list.
     Block *prev;          // Pointer to the previous block in the global list.
 
-    bool is_free;         // Flag indicating whether the block is free.
-    Block *next_free;     // Pointer to the next free block in the free list.
-    Block *prev_free;     // Pointer to the previous free block in the free list.
+    Arena *arena;         // Pointer to the arena that allocated this block.
+
+    bool is_free     : 1; // Flag indicating whether the block is free.
+    bool color       : 1; // Color for RB tree: 0 = RED, 1 = BLACK
+    
+    Block *left_free;     // Left child in red-black tree
+    Block *right_free;    // Right child in red-black tree
 };
 
 /*
@@ -39,11 +46,9 @@ struct Arena {
     bool is_dynamic;                     // Flag indicating if the arena uses dynamic allocation.
 
     Block *tail;                         // Pointer to the last block in the global list.
-    Block *free_blocks;                  // Pointer to the list of free blocks.
+    Block *free_blocks;                  // Pointer to the list of free blocks (становится корнем RB-дерева).
 
     size_t free_size_in_tail;            // Free space available in the tail block.
-    size_t max_free_block_size;          // Size of the largest free block.
-    size_t max_free_block_size_count;    // Number of blocks matching max_free_block_size.
 };
 
 
@@ -51,141 +56,237 @@ Arena *arena_new_dynamic(size_t size);
 Arena *arena_new_static(void *memory, size_t size);
 void arena_reset(Arena *arena);
 void *arena_alloc(Arena *arena, size_t size);
-void arena_free_block(Arena *arena, void *data);
+void arena_free_block(void *data);
 void arena_free(Arena *arena);
 
 #ifdef DEBUG
 #include <stdio.h>
 #include <math.h>
 void print_arena(Arena *arena);
-void print_fancy(Arena *arena);
+void print_fancy(Arena *arena, size_t bar_size);
 #endif // DEBUG
 
+
 #ifdef ARENA_IMPLEMENTATION
-static inline void update_next_of_prev_block(Arena *arena, Block *block, Block *new_val) {
-    if (block->prev_free) {
-        block->prev_free->next_free = new_val;
+/*
+ * Safe next block pointer
+ * Checks if the next block exists and is not in the tail free space
+ */
+static inline bool has_next_block(Arena *arena, Block *block) {
+    // Calculate the offset of the next block (as a number, not a pointer)
+    size_t next_offset = (size_t)((char *)block - (char *)arena->data) + 
+                         sizeof(Block) + block->size;
+    
+    // Verify that the next block offset is within valid limits
+    // And not in the tail free space
+    return (next_offset < arena->capacity) && 
+           ((block != arena->tail) || (arena->free_size_in_tail == 0));
+}
+
+/*
+ * Safe next block pointer
+ * Checks if the next block exists and is not in the tail free space
+ */
+static inline Block *next_block(Arena *arena, Block *block) {
+    if (!has_next_block(arena, block)) {
+        return NULL;
+    }
+    
+    // Only if the check passed, calculate the pointer
+    return (Block *)(void *)((char *)block + sizeof(Block) + block->size);
+}
+
+/*
+ * Rotate left
+ * Used to balance the LLRB tree
+ */
+Block *rotateLeft(Block *current_block) {
+    Block *x = current_block->right_free;
+    current_block->right_free = x->left_free;
+    x->left_free = current_block;
+    x->color = current_block->color;
+    current_block->color = RED;
+    return x;
+}
+
+/*
+ * Rotate right
+ * Used to balance the LLRB tree
+ */
+Block *rotateRight(Block *current_block) {
+    Block *x = current_block->left_free;
+    current_block->left_free = x->right_free;
+    x->right_free = current_block;
+    x->color = current_block->color;
+    current_block->color = RED;
+    return x;
+}
+
+/*
+ * Flip colors
+ * Used to balance the LLRB tree
+ */
+void flipColors(Block *current_block) {
+    current_block->color = RED;
+    current_block->left_free->color = BLACK;
+    current_block->right_free->color = BLACK;
+}
+
+/*
+ * Balance the LLRB tree
+ */
+Block *balance(Block *current_block) {
+    if (current_block->right_free && current_block->right_free->color == RED)
+        current_block = rotateLeft(current_block);
+    if (current_block->left_free && current_block->left_free->color == RED && current_block->left_free->left_free && current_block->left_free->left_free->color == RED)
+        current_block = rotateRight(current_block);
+    if (current_block->left_free && current_block->right_free && current_block->left_free->color == RED && current_block->right_free->color == RED)
+        flipColors(current_block);
+    return current_block;
+}
+
+/*
+ * Insert a new block into the LLRB tree
+ */
+Block *insert(Block *tree, Block *new_block) {
+    if (tree == NULL) return new_block;
+
+    if (new_block->size < tree->size)
+        tree->left_free = insert(tree->left_free, new_block);
+    else if (new_block->size >= tree->size)
+        tree->right_free = insert(tree->right_free, new_block);
+
+    tree = balance(tree);
+    return tree;
+}
+
+/*
+ * Detach a block from the LLRB tree
+ */
+void detach(Block **tree, Block *target) {
+    if (!tree || !target) return;
+
+    Block *parent = NULL;
+    Block *current = *tree;
+
+    while (current && current != target) {
+        parent = current;
+        if (target->size < current->size)
+            current = current->left_free;
+        else
+            current = current->right_free;
+    }
+
+    if (!current) return; // In case target is not found
+
+    Block *replacement = NULL;
+
+    if (!target->right_free) {
+        replacement = target->left_free;
+    }
+    else if (!target->left_free) {
+        replacement = target->right_free;
+    }
+    else {
+        Block *min_parent = target;
+        Block *min_node = target->right_free;
+
+        while (min_node->left_free) {
+            min_parent = min_node;
+            min_node = min_node->left_free;
+        }
+
+        if (min_parent != target) {
+            min_parent->left_free = min_node->right_free;
+            min_node->right_free = target->right_free;
+        }
+
+        min_node->left_free = target->left_free;
+        replacement = min_node;
+    }
+
+    if (parent) {
+        if (parent->left_free == target)
+            parent->left_free = replacement;
+        else
+            parent->right_free = replacement;
     } else {
-        arena->free_blocks = new_val;
+        *tree = replacement;
     }
+
+    target->left_free = target->right_free = NULL;
+    target->color = RED;
+
+    *tree = balance(*tree);
 }
 
-static inline void update_prev_of_next_block(Block *block, Block *new_val) {
-    if (block->next_free) {
-        block->next_free->prev_free = new_val;
+/*
+ * Find the best fit block in the LLRB tree
+ */
+Block *bestFit(Block *root, size_t size) {
+    Block *best = NULL;
+    
+    while (root) {
+        if (root->size >= size) {
+            best = root;
+            root = root->left_free;
+        } else {
+            root = root->right_free;
+        }
     }
+
+    return best;
 }
 
-static inline void update_max_free_block_on_free(Arena *arena, size_t block_size) {
-    if (block_size > arena->max_free_block_size) {
-        arena->max_free_block_size = block_size;
-        arena->max_free_block_size_count = 1;
-    } else if (block_size == arena->max_free_block_size) {
-        arena->max_free_block_size_count++;
-    }
+/*
+ * Make the given block the tail of the arena
+ */
+void make_tail(Arena *arena, Block *block) {
+    arena->free_size_in_tail += block->size + sizeof(Block);
+    arena->tail = block;
+    block->size = 0;
 }
 
+/*
+ * Merge two adjacent free blocks
+ */
+Block *merge_blocks(Arena *arena, Block *target, Block *source) {
+    target->size += source->size + sizeof(Block);
+    Block *block_after = next_block(arena, source);
+    if (block_after) {
+        block_after->prev = target;
+    }
+    return target;
+}
+
+
+/*
+ * Create an empty block at the end of the given block
+ * Sets up a new block with size 0 and adjusts pointers
+ */
 static inline Block *create_empty_block(Arena *arena, Block *prev_block) {
     // prep data for new block
     Block *prev_tail = prev_block;
-    void *new_chunk = prev_tail->data + prev_tail->size;
+    void *new_chunk = (char *)block_data(prev_tail) + prev_tail->size;
 
     // create new block
     Block *block = (Block *)new_chunk;
     block->size = 0;
-    block->data = new_chunk + sizeof(Block);
     block->is_free = true;
-    block->next = NULL;
     block->prev = NULL;
+    block->color = RED;
+    block->left_free = NULL;
+    block->right_free = NULL;
+    block->arena = arena;
 
     return block;
 }
 
-static inline size_t find_second_largest_size(Arena *arena) {
-    Block *block = arena->free_blocks;
-    if (!block) return 0;
 
-    size_t second_largest = 0;
-    while (block) {
-        if (block->size > second_largest && block->size != arena->max_free_block_size) {
-            second_largest = block->size;
-        }
-        block = block->next_free;
-    }
-    return second_largest;
-}
-
-static inline void update_max_free_block_on_detach(Arena *arena, size_t block_size) {
-    if (block_size == arena->max_free_block_size) {
-        arena->max_free_block_size_count--;
-        if (arena->max_free_block_size_count == 0) {
-            arena->max_free_block_size = find_second_largest_size(arena);
-            if (arena->max_free_block_size != 0) arena->max_free_block_size_count = 1;
-        }
-    }
-}
-
-static void wipe_free_block(Arena *arena, Block *free_block, Block *tail) {
-    if (tail->next == NULL && tail->size == 0) {
-        free_block->next = NULL;
-
-        arena->free_size_in_tail += free_block->size + sizeof(Block);
-        arena->tail = free_block;
-
-        update_max_free_block_on_detach(arena, free_block->size);
-        update_next_of_prev_block(arena, free_block, free_block->next_free);
-        update_prev_of_next_block(free_block, free_block->prev_free);
-
-        free_block->size = 0;
-    }
-}
-
-static void merge_blocks(Arena *arena, Block *block1, Block *block2) {
-    // wipe free block if it's the last block
-    if (block2->next == NULL && block2->size == 0) {
-        wipe_free_block(arena, block1, block2);
-        return;
-    }
-
-    // merge blocks
-    block1->size += block2->size + sizeof(Block);
-    Block *block_after = block2->next;
-    block_after->prev = block1;
-    block1->next = block_after;
-
-    update_next_of_prev_block(arena, block2, block2->next_free);
-    update_max_free_block_on_free(arena, block1->size);
-}
-
-static void split_block(Arena *arena, Block *block, size_t size) {
-    size_t new_block_size = block->size - size - sizeof(Block);
-    size_t block_size = block->size;
-    block->size = size;
-    block->is_free = false;
-
-    Block *new_block = create_empty_block(arena, block);
-    new_block->size = new_block_size;
-    new_block->is_free = true;
-
-    if (block->next) {
-        new_block->next = block->next;
-        block->next->prev = new_block;
-    }
-    else {
-        new_block->next = NULL;
-    }
-    block->next = new_block;
-    new_block->prev = block;
-
-    update_next_of_prev_block(arena, block, new_block);
-    update_prev_of_next_block(block, new_block);
-
-    new_block->next_free = block->next_free;
-    new_block->prev_free = block->prev_free;
-
-    update_max_free_block_on_detach(arena, block_size);
-}
-
+/*
+ * Allocate memory from the tail of the arena
+ * Updates the tail block and creates a new block if there is enough space
+ */
 static void *alloc_in_tail(Arena *arena, size_t size) {
     // get a tail block
     Block *block = arena->tail;
@@ -197,7 +298,6 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
     // create new block
     if (arena->free_size_in_tail >= sizeof(Block)) {
         Block *new_block = create_empty_block(arena, arena->tail);
-        block->next = new_block;
         new_block->prev = block;
         // update arena
         arena->tail = new_block;
@@ -208,97 +308,140 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
         arena->free_size_in_tail = 0;
     }
 
+    block->arena = arena;
     // return allocated data pointer
-    return block->data;
+    return block_data(block);
 }
 
-static void *alloc_in_free_block(Arena *arena, size_t size) {
-    Block *block = arena->free_blocks;
+/*
+ * Allocate memory from the free blocks
+ * Updates the free blocks list and creates a new block if there is enough space
+ */
+static void *alloc_in_free_blocks(Arena *arena, size_t size) {
+    Block *best = bestFit(arena->free_blocks, size);
 
-    // find block with enough space
-    while (block->size < size) {
-        block = block->next_free;
+    if (best) {
+        detach(&arena->free_blocks, best);
+        best->is_free = false;
+        if (best->size > size + sizeof(Block) + MIN_BUFFER_SIZE) {
+            Block *block_after = next_block(arena, best);
+            size_t new_block_size = best->size - size - sizeof(Block);
+            best->size = size;
+            best->is_free = false;
+
+            Block *new_block = create_empty_block(arena, best);
+            new_block->size = new_block_size;
+            new_block->is_free = true;
+
+            if (block_after) {
+                block_after->prev = new_block;
+            }
+            new_block->prev = best;
+            arena->free_blocks = insert(arena->free_blocks, new_block);
+        }
+        
+        return block_data(best);
     }
 
-    // split block if it's too big
-    if (block->size > size + sizeof(Block) + MIN_BUFFER_SIZE) {
-        split_block(arena, block, size);
-    }
-    else {
-        block->is_free = false;
-
-        update_next_of_prev_block(arena, block, block->next_free);
-        update_prev_of_next_block(block, block->prev_free);
-        update_max_free_block_on_detach(arena, block->size);
-    }
-
-    return block->data;
+    return NULL;
 }
 
+/*
+ * Allocate memory in the arena
+ * Tries to allocate memory in the tail or from free blocks
+ * Returns NULL if there is not enough space
+ */
 void *arena_alloc(Arena *arena, size_t size) {
     if (size == 0) return NULL;
+    
+    // check if there is enough space in the free blocks
+    void *result = alloc_in_free_blocks(arena, size);
+    if (result) return result;
 
     // check if area has enough space in the end
     if (arena->free_size_in_tail >= size) {
         return alloc_in_tail(arena, size);
     }
 
-    // check if there are free blocks with enough space
-    if (arena->max_free_block_size >= size) {
-        return alloc_in_free_block(arena, size);
-    }
     return NULL;
 }
 
-void arena_free_block(Arena *arena, void *data) {
-    Block *block = (Block *)(data - sizeof(Block));
+/*
+ * Free a block of memory in the arena
+ * Marks the block as free, merges it with adjacent free blocks if possible,
+ * and updates the free block list
+ */
+static void arena_free_block_full(Arena *arena, void *data) {
+    Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
     block->is_free = true;
 
     Block *prev = block->prev;
-    Block *next = block->next;
+    Block *next = next_block(arena, block);
 
-    update_max_free_block_on_free(arena, block->size);
+    Block* result = NULL;
 
     if (!next) {
-        block->is_free = true;
         arena->free_size_in_tail += block->size;
+        arena->tail = block;
         block->size = 0;
     }
     else if (next->is_free) {
-        merge_blocks(arena, block, next);
+        if (next == arena->tail) {
+            make_tail(arena, block);
+        }
+        else {
+            detach(&arena->free_blocks, next);
+            merge_blocks(arena, block, next);
+            result = block;
+        }
+    }
+    else {
+        result = block;
     }
 
     if (prev && prev->is_free) {
-        merge_blocks(arena, prev, block);
-        block = prev;
+        detach(&arena->free_blocks, prev);
+        if (block == arena->tail) {
+            make_tail(arena, prev);
+        }
+        else {
+            merge_blocks(arena, prev, block);
+            result = prev;
+        }
     }
 
-    if (block->size != 0) {
-        if (!arena->free_blocks) {
-            arena->free_blocks = block;
-        } else {
-            Block *prev_free = arena->free_blocks;
-            block->next_free = prev_free;
-            prev_free->prev_free = block;
-            arena->free_blocks = block;
-        }
+    if (result) {
+        arena->free_blocks = insert(arena->free_blocks, result);
     }
 }
 
+/*
+ * Free a block of memory in the arena
+ * Marks the block as free, merges it with adjacent free blocks if possible,
+ * and updates the free block list
+ */
+void arena_free_block(void *data) {
+    if (!data) return;
+    Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
+    Arena *arena = block->arena;
+    arena_free_block_full(arena, data);
+}
+
+/*
+ * Create a static arena
+ * Initializes an arena using preallocated memory and sets up the first block
+ * Returns NULL if the provided size is too small
+ */
 Arena *arena_new_static(void *memory, size_t size) {
     if (size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
 
     Arena *arena = (Arena *)memory;
     arena->capacity = size - sizeof(Arena);
-    arena->data = memory + sizeof(Arena);
-    arena->max_free_block_size = 0;
-    arena->max_free_block_size_count = 0;
+    arena->data = (char *)memory + sizeof(Arena);
     
     Block *block = (Block *)arena->data;
     block->size = 0;
-    block->data = arena->data + sizeof(Block);
     block->is_free = true;
-    block->next = NULL;
     block->prev = NULL;
 
     arena->tail = block;
@@ -309,6 +452,11 @@ Arena *arena_new_static(void *memory, size_t size) {
     return arena;
 }
 
+/*
+ * Create a dynamic arena
+ * Allocates memory for the arena and initializes it as a dynamic arena
+ * Returns NULL if the requested size is too small
+ */
 Arena *arena_new_dynamic(size_t size) {
     if (size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
     void *data = malloc(size);
@@ -319,20 +467,25 @@ Arena *arena_new_dynamic(size_t size) {
     return arena;
 }
 
+/*
+ * Reset the arena
+ * Clears the arena's blocks and resets it to the initial state without freeing memory
+ */
 void arena_reset(Arena *arena) {
     Block *block = (Block *)arena->data;
     block->size = 0;
     block->is_free = true;
-    block->next = NULL;
     block->prev = NULL;
-    block->next_free = NULL;
-    block->prev_free = NULL;
 
     arena->tail = block;
     arena->free_blocks = NULL;
     arena->free_size_in_tail = arena->capacity - sizeof(Block);
 }
 
+/*
+ * Free a dynamic arena
+ * Releases memory for dynamically allocated arenas
+ */
 void arena_free(Arena *arena) {
     if (arena->is_dynamic) {
         free(arena);
@@ -340,102 +493,194 @@ void arena_free(Arena *arena) {
 }
 
 #ifdef DEBUG
+/*
+ * Helper function to print LLRB tree structure
+ * Recursively prints the tree with indentation to show hierarchy
+ */
+void print_llrb_tree(Block *node, int depth) {
+    if (node == NULL) return;
+    
+    // Print right subtree first (to display tree horizontally)
+    print_llrb_tree(node->right_free, depth + 1);
+    
+    // Print current node with indentation
+    for (int i = 0; i < depth; i++) printf("    ");
+    printf("Block: %p, Size: %lu %i\n",
+        node, 
+        node->size,
+        node->color);
+    
+    // Print left subtree
+    print_llrb_tree(node->left_free, depth + 1);
+}
+
+/*
+ * Print arena details
+ * Outputs the current state of the arena and its blocks, including free blocks
+ * Useful for debugging and understanding memory usage
+ */
 void print_arena(Arena *arena) {
     printf("Arena: %p\n", arena);
     printf("Arena Full Size: %lu\n", arena->capacity + sizeof(Arena));
     printf("Arena Data Size: %lu\n", arena->capacity);
     printf("Data: %p\n", arena->data);
     printf("Tail: %p\n", arena->tail);
+    printf("Free Blocks: %p\n", arena->free_blocks);
     printf("Free Size in Tail: %lu\n", arena->free_size_in_tail);
-    printf("Max Free Block Size: %lu\n", arena->max_free_block_size);
-    printf("Max Free Block Size Count: %lu\n", arena->max_free_block_size_count);
     printf("\n");
+
+    size_t occupied_data = 0;
+    size_t occupied_meta = 0;
+    size_t len = 0;
+
+    occupied_meta = sizeof(Arena);
 
     Block *block = (Block *)arena->data;
     while (block != NULL) {
+        occupied_data += block->size;
+        occupied_meta += sizeof(Block);
+        len++;
         printf("  Block: %p\n", block);
         printf("  Block Full Size: %lu\n", block->size + sizeof(Block));
         printf("  Block Data Size: %lu\n", block->size);
         printf("  Is Free: %d\n", block->is_free);
-        printf("  Data Pointer: %p\n", block->data);
-        printf("  Next: %p\n", block->next);
+        printf("  Data Pointer: %p\n", block_data(block));
+        printf("  Arena: %p\n", block->arena);
+        printf("  Next: %p\n", next_block(arena, block));
         printf("  Prev: %p\n", block->prev);
+        printf("  Color: %s\n", block->color ? "RED" : "BLACK");
+        printf("  Left Free: %p\n", block->left_free);
+        printf("  Right Free: %p\n", block->right_free);
         printf("\n");
-        block = block->next;
+        block = next_block(arena, block);
     }
 
     printf("Arena Free Blocks\n");
 
     Block *free_block = arena->free_blocks;
     if (free_block == NULL) printf("  None\n");
-    while (free_block != NULL) {
-        printf("  Block: %p\n", free_block);
-        printf("  Block Full Size: %lu\n", free_block->size + sizeof(Block));
-        printf("  Block Data Size: %lu\n", free_block->size);
-        printf("  Is Free: %d\n", free_block->is_free);
-        printf("  Data Pointer: %p\n", free_block->data);
-        printf("  Next: %p\n", free_block->next);
-        printf("  Prev: %p\n", free_block->prev);
-        printf("  Next Free: %p\n", free_block->next_free);
-        printf("  Prev Free: %p\n", free_block->prev_free);
-        printf("\n");
-        free_block = free_block->next_free;
+    else {
+        print_llrb_tree(free_block, 0);
     }
     printf("\n");
+
+    printf("Arena occupied data size: %lu\n", occupied_data);
+    printf("Arena occupied meta size: %lu\n", occupied_meta);
+    printf("Arena occupied full size: %lu\n", occupied_data + occupied_meta);
+    printf("Arena block count: %lu\n", len);
 }
 
-#ifndef BAR_SIZE
-    #define BAR_SIZE 102
-#endif
+/*
+ * Print a fancy visualization of the arena memory
+ * Displays a bar chart of the arena's memory usage, including free blocks, occupied data, and metadata
+ * Uses ANSI escape codes to colorize the visualization
+ */
+void print_fancy(Arena *arena, size_t bar_size) {
+    if (!arena) return;
+    
+    size_t total_size = arena->capacity;
 
-void print_fancy(Arena *arena) {
-    char bar_borders[BAR_SIZE + 1 + 2];
-    char bar_data[BAR_SIZE + 1 + 2];
-
-    for (int i = 0; i < BAR_SIZE; i++) {
-        bar_borders[i] = '-';
-        bar_data[i] = ' ';
-    }
-
-    bar_borders[0] = '+';
-    bar_data[0] = '|';
-    bar_borders[BAR_SIZE - 1] = '+';
-    bar_data[BAR_SIZE - 1] = '|';
-
-    bar_borders[BAR_SIZE] = '\0';
-    bar_data[BAR_SIZE] = '\0';
-
-    double scale_factor = (double)BAR_SIZE / (double)(arena->capacity + sizeof(Arena));
-
-    double area_meta_size = floor(sizeof(Arena) * scale_factor);
-    for (int i = 0; i < area_meta_size; i++) {
-        bar_data[i + 1] = '@';
-    }
-    bar_borders[(int)area_meta_size] = '+';
-    bar_data[(int)area_meta_size] = '|';
-
-    Block *block = (Block *)arena->data;
-    double block_meta_size = floor(sizeof(Block) * scale_factor);
-    int counter = (int)area_meta_size;
-
-    while (block != NULL) {
-        double block_size = floor(block->size * scale_factor);
-        for (int i = 0; i < block_meta_size; i++) {
-            bar_data[++counter] = '@';
+    printf("\nArena Memory Visualization [%zu bytes]\n", total_size + sizeof(Arena));
+    printf("┌");
+    for (int i = 0; i < (int)bar_size; i++) printf("─");
+    printf("┐\n│");
+    
+    // Size of one segment of visualization in bytes
+    double segment_size = (double)(total_size / bar_size);
+    
+    // Iterate through each segment of visualization
+    for (int i = 0; i < (int)bar_size; i++) {
+        // Calculate the start and end positions of the segment in memory
+        size_t segment_start = (size_t)(i * segment_size);
+        size_t segment_end = (size_t)((i + 1) * segment_size);
+        
+        // Determine which data type prevails in this segment
+        char segment_type = ' '; // Empty by default
+        size_t max_overlap = 0;
+        
+        // Check arena metadata
+        size_t arena_meta_end = sizeof(Arena);
+        if (segment_start < arena_meta_end) {
+            size_t overlap = segment_start < arena_meta_end ? 
+                (arena_meta_end > segment_end ? segment_end - segment_start : arena_meta_end - segment_start) : 0;
+            if (overlap > max_overlap) {
+                max_overlap = overlap;
+                segment_type = '@'; // Arena metadata
+            }
         }
-        bar_data[counter] = '|';
-        for (int i = 0; i < block_size; i++) {
-            if (!block->is_free) bar_data[++counter] = '#';
-            else bar_data[++counter] = ' ';
+        
+        // Check each block
+        size_t current_pos = 0;
+        Block *current = (Block *)arena->data;
+        
+        while (current) {
+            // Position of block metadata
+            size_t block_meta_start = current_pos;
+            size_t block_meta_end = block_meta_start + sizeof(Block);
+            
+            // Check intersection with block metadata
+            if (segment_start < block_meta_end && segment_end > block_meta_start) {
+                size_t overlap = (segment_end < block_meta_end ? segment_end : block_meta_end) - 
+                             (segment_start > block_meta_start ? segment_start : block_meta_start);
+                if (overlap > max_overlap) {
+                    max_overlap = overlap;
+                    segment_type = '@'; // Block metadata
+                }
+            }
+            
+            // Position of block data
+            size_t block_data_start = block_meta_end;
+            size_t block_data_end = block_data_start + current->size;
+            
+            // Check intersection with block data
+            if (segment_start < block_data_end && segment_end > block_data_start) {
+                size_t overlap = (segment_end < block_data_end ? segment_end : block_data_end) - 
+                             (segment_start > block_data_start ? segment_start : block_data_start);
+                if (overlap > max_overlap) {
+                    max_overlap = overlap;
+                    segment_type = current->is_free ? ' ' : '#'; // Free or occupied block
+                }
+            }
+            
+            current_pos = block_data_end;
+            current = next_block(arena, current);
         }
-        bar_borders[++counter] = '+';
-        bar_data[counter] = '|';
-        block = block->next;
-    }
 
-    printf("%s\n", bar_borders);
-    printf("%s\n", bar_data);
-    printf("%s\n", bar_borders);
+        // Check tail free memory
+        if (arena->free_size_in_tail > 0) {
+            size_t tail_start = total_size - arena->free_size_in_tail;
+            if (segment_start < total_size && segment_end > tail_start) {
+                size_t overlap = (segment_end < total_size ? segment_end : total_size) - 
+                               (segment_start > tail_start ? segment_start : tail_start);
+                if (overlap > max_overlap) {
+                    max_overlap = overlap;
+                    segment_type = '-'; // Free tail
+                }
+            }
+        }
+        
+        // Display the corresponding symbol with color
+        if (segment_type == '@') {
+            printf("\033[43m@\033[0m"); // Yellow for metadata
+        } else if (segment_type == '#') {
+            printf("\033[41m#\033[0m"); // Red for occupied blocks
+        } else if (segment_type == ' ') {
+            printf("\033[42m \033[0m"); // Green for free blocks
+        } else if (segment_type == '-') {
+            printf("\033[40m \033[0m"); // Black for empty space
+        }
+        
+    }
+    
+    printf("│\n└");
+    for (int i = 0; i < (int)bar_size; i++) printf("─");
+    printf("┘\n");
+
+    printf("Legend: ");
+    printf("\033[43m @ \033[0m - Used Meta blocks, ");
+    printf("\033[41m # \033[0m - Used Data blocks, ");
+    printf("\033[42m   \033[0m - Free blocks, ");
+    printf("\033[40m   \033[0m - Empty space\n\n");
 }
 #endif // DEBUG
 

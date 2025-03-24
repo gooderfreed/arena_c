@@ -10,9 +10,9 @@ This library provides a header-only implementation of an arena memory allocator 
 
 **Key Benefits of Arena Allocation:**
 
-*   **Performance:** Faster allocation and deallocation compared to general-purpose allocators like `malloc`/`free`, especially for allocating and freeing many small objects within the arena's lifecycle.
-*   **Efficiency:** Reduced memory fragmentation, leading to better memory utilization within the arena.
-*   **Control:**  Deterministic deallocation - freeing the entire arena at once is very fast and predictable.  Individual blocks can also be freed for memory reuse within the arena.
+*   **Performance:** Logarithmic O(log n) time complexity for allocations using a Left-Leaning Red-Black Tree (LLRB) for managing free blocks, significantly faster than general-purpose allocators like `malloc`/`free`.
+*   **Efficiency:** Reduced memory fragmentation and smaller metadata overhead, leading to better memory utilization within the arena.
+*   **Control:**  Deterministic deallocation - freeing the entire arena at once is very fast and predictable. Individual blocks can also be freed for memory reuse within the arena.
 *   **Simplicity:**  Easy to integrate into C projects as a header-only library.
 
 **When to Use Arena Allocation:**
@@ -28,7 +28,9 @@ This library provides a header-only implementation of an arena memory allocator 
 *   **Static and Dynamic Arena Creation:**
     *   **Static Arena:**  Create arenas within pre-allocated memory regions (e.g., on the stack or in a global buffer) for maximum control and predictability.
     *   **Dynamic Arena:**  Dynamically allocate arena memory from the heap using `malloc`.
-*   **Fast Allocation and Deallocation:**  Optimized for speed, especially for frequent allocations and deallocations within the arena. Allocation prioritizes O(1) tail allocation for speed and falls back to O(n) free block search when necessary.
+*   **Optimized Allocation Strategy:** 
+    *   **Free Block Allocation:** Uses a balanced LLRB tree to find the best fitting block with O(log n) complexity
+    *   **Tail Allocation:** Falls back to allocating from the tail when no suitable free blocks are available
 *   **Block-Level Deallocation (`arena_free_block`):**  Allows freeing individual blocks within the arena, enabling memory reuse and finer-grained control over memory management beyond full arena resets.
 *   **Memory Efficiency:**  Reduces fragmentation and improves memory utilization, especially when managing many objects within a defined memory scope.
 *   **Arena Reset:**  Quickly reset the entire arena, marking all allocated blocks as free for reuse, offering a fast way to bulk-deallocate memory.
@@ -40,7 +42,7 @@ This library provides a header-only implementation of an arena memory allocator 
 
 **Important Considerations:**
 
-*   **Arena Metadata Overhead:**  The arena metadata (e.g., block headers) consumes a small portion of the allocated arena memory. While relatively small (56 bytes per block header), this overhead can become significant if you allocate a very large number of extremely small, individual objects separately.  **It is NOT RECOMMENDED to use arena allocation for scenarios requiring allocation of a vast quantity of tiny, independent objects.**  For optimal efficiency, arena allocation is best suited for managing larger objects or groups of related objects with similar lifecycles.
+*   **Arena Metadata Overhead:**  The arena metadata (e.g., block headers) consumes a small portion of the allocated arena memory. While optimized to only 48 bytes per block header, this overhead can become significant if you allocate a very large number of extremely small, individual objects separately. **It is NOT RECOMMENDED to use arena allocation for scenarios requiring allocation of a vast quantity of tiny, independent objects.**  For optimal efficiency, arena allocation is best suited for managing larger objects or groups of related objects with similar lifecycles.
 *   **Memory Locality:** Arena allocation can improve memory locality, as objects allocated within the same arena are likely to be physically close in memory, potentially improving cache performance.
 
 ## Getting Started
@@ -171,7 +173,7 @@ To enable debugging output, compile your code with the `DEBUG` macro defined:
 gcc -DDEBUG your_code.c arena_impl.c -o your_program
 ```
 
-Then, you can call `print_arena(arena)` or `print_fancy(arena)` to print detailed information about the arena's state to the console, which can be helpful for debugging memory allocation issues and understanding arena behavior.
+Then, you can call `print_arena(arena)` or `print_fancy(arena, 100)` to print detailed information about the arena's state to the console, which can be helpful for debugging memory allocation issues and understanding arena behavior.
 
 ### Customization
 
