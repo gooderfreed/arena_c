@@ -214,7 +214,8 @@ void detach(Block **tree, Block *target) {
         *tree = replacement;
     }
 
-    target->left_free = target->right_free = NULL;
+    target->left_free = NULL;
+    target->right_free = NULL;
     target->color = RED;
 
     *tree = balance(*tree);
@@ -374,6 +375,9 @@ void *arena_alloc(Arena *arena, size_t size) {
 static void arena_free_block_full(Arena *arena, void *data) {
     Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
     block->is_free = true;
+    block->left_free = NULL;
+    block->right_free = NULL;
+    block->color = RED;
 
     Block *prev = block->prev;
     Block *next = next_block(arena, block);
