@@ -64,6 +64,7 @@ void arena_free(Arena *arena);
 #include <math.h>
 void print_arena(Arena *arena);
 void print_fancy(Arena *arena, size_t bar_size);
+void print_llrb_tree(Block *node, int depth);
 #endif // DEBUG
 
 

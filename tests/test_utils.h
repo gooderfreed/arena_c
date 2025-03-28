@@ -6,19 +6,25 @@
 #include <stdbool.h>
 #include <string.h>
 
-// Global test counters
+/* 
+ * Global test counters
+*/
 static int tests_total = 0;
 static int tests_passed = 0;
 static int tests_failed = 0;
 
-// Colors for output
+/* 
+ * Colors for output
+*/
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
 #define ANSI_COLOR_YELLOW  "\x1b[33m"
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
-// Macro for checking a condition (full output)
+/* 
+ * Macro for checking a condition (full output)
+*/
 #define ASSERT(condition, message) do { \
     tests_total++; \
     if (condition) { \
@@ -31,7 +37,9 @@ static int tests_failed = 0;
     } \
 } while (0)
 
-// Macro for checking a condition (silent mode - messages only on error)
+/* 
+ * Macro for checking a condition (silent mode - messages only on error)
+*/
 #define ASSERT_QUIET(condition, message) do { \
     tests_total++; \
     if (condition) { \
@@ -43,17 +51,23 @@ static int tests_failed = 0;
     } \
 } while (0)
 
-// Macro for starting a new test
+/* 
+ * Macro for starting a new test
+*/
 #define TEST_CASE(name) do { \
     printf(ANSI_COLOR_BLUE "\n=== TEST CASE: %s ===\n" ANSI_COLOR_RESET, name); \
 } while (0)
 
-// Macro for starting a new test phase
+/* 
+ * Macro for starting a new test phase
+*/
 #define TEST_PHASE(name) do { \
     printf(ANSI_COLOR_YELLOW "\n--- Phase: %s ---\n" ANSI_COLOR_RESET, name); \
 } while (0)
 
-// Function for printing test results
+/* 
+ * Function for printing test results
+*/
 static void print_test_summary() {
     printf("\n");
     printf(ANSI_COLOR_BLUE "=== Test Results ===\n" ANSI_COLOR_RESET);
@@ -73,15 +87,19 @@ static void print_test_summary() {
     }
 }
 
-// Functions for checking the integrity of the arena
-// Checks that pointers do not overlap
+/* 
+ * Functions for checking the integrity of the arena
+ * Checks that pointers do not overlap
+*/
 static bool pointers_overlap(void *p1, size_t size1, void *p2, size_t size2) {
     char *c1 = (char*)p1;
     char *c2 = (char*)p2;
     return (c1 < (c2 + size2)) && (c2 < (c1 + size1));
 }
 
-// Checking the integrity of the array of pointers
+/* 
+ * Checking the integrity of the array of pointers
+*/
 static void check_pointers_integrity(void **pointers, size_t *sizes, int count) {
     for (int i = 0; i < count; i++) {
         if (!pointers[i]) continue;
@@ -95,12 +113,16 @@ static void check_pointers_integrity(void **pointers, size_t *sizes, int count) 
     }
 }
 
-// Filling the allocated block of memory with a test pattern
+/* 
+ * Filling the allocated block of memory with a test pattern
+*/
 static void fill_memory_pattern(void *ptr, size_t size, int pattern) {
     memset(ptr, pattern & 0xFF, size);
 }
 
-// Checking the preservation of the pattern in memory
+/* 
+ * Checking the preservation of the pattern in memory
+*/
 static bool verify_memory_pattern(void *ptr, size_t size, int pattern) {
     unsigned char expected = pattern & 0xFF;
     unsigned char *bytes = (unsigned char*)ptr;

@@ -1,4 +1,4 @@
-# Makefile для компиляции и запуска тестов арена-аллокатора
+# Makefile for compiling and running arena allocator tests
 
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -g -I.
@@ -10,24 +10,24 @@ TEST_BINS = $(TEST_SRCS:.c=)
 
 .PHONY: all clean run run_debug test valgrind list
 
-# Цель по умолчанию: собрать и запустить все тесты в режиме отладки
+# Default goal: compile and run all tests in debug mode
 all: clean test
 
-# Компиляция каждого теста без отладочной информации
+# Compilation of each test without debug information
 $(TEST_DIR)/%: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
 	$(CC) $(CFLAGS) $< -o $@
 
-# Компиляция каждого теста с отладочной информацией
+# Compilation of each test with debug information
 $(TEST_DIR)/%_debug: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
 	$(CC) $(CFLAGS) $(DEBUG_FLAGS) $< -o $@
 
-# Компиляция всех тестов
+# Compilation of all tests
 build: $(TEST_BINS)
 
-# Компиляция всех тестов с отладочной информацией
+# Compilation of all tests with debug information
 build_debug: $(TEST_SRCS:%.c=%_debug)
 
-# Запуск всех тестов (без отладочной информации)
+# Running all tests (without debug information)
 run: build
 	@echo "Running all tests..."
 	@for test in $(TEST_BINS) ; do \
@@ -40,7 +40,7 @@ run: build
 	done
 	@echo "\nAll tests completed."
 
-# Запуск всех тестов с отладочной информацией (verbose)
+# Running all tests in debug mode (verbose)
 run_debug: build_debug
 	@echo "Running all tests in debug mode..."
 	@for test in $(TEST_SRCS:%.c=%_debug) ; do \
@@ -53,7 +53,7 @@ run_debug: build_debug
 	done
 	@echo "\nAll tests completed."
 
-# Проверка на утечки памяти с помощью valgrind
+# Memory leak check using valgrind
 valgrind: build
 	@echo "Running valgrind memory check on all tests..."
 	@for test in $(TEST_BINS) ; do \
@@ -62,7 +62,7 @@ valgrind: build
 	done
 	@echo "\nAll memory checks completed."
 
-# Тестирование: собрать и запустить все тесты в режиме отладки
+# Testing: compile and run all tests in debug mode
 test: build_debug
 	@for test in $(TEST_SRCS:%.c=%_debug) ; do \
 		echo "\n--- Running $$test ---" ; \
@@ -79,11 +79,11 @@ test: build_debug
 		echo "\nAll tests PASSED!"; \
 	fi
 
-# Очистка бинарных файлов
+# Cleaning binary files
 clean:
 	rm -f $(TEST_BINS) $(TEST_SRCS:%.c=%_debug)
 
-# Показать доступные тесты
+# Show available tests
 list:
 	@echo "Available tests:"
 	@for test in $(TEST_SRCS) ; do \

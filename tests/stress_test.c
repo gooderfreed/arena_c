@@ -44,15 +44,20 @@ void test_complex_allocation_pattern(void) {
         }
     }
     
-    // Сводный отчет вместо спама ассертов
+    // Summary report instead of spamming asserts
     ASSERT(allocated > 0, "Should successfully allocate some objects");
     ASSERT(pattern_errors == 0, "All memory patterns should be valid");
+    
+    #ifdef DEBUG
     printf("Allocated %d objects of various sizes (%d allocation failures)\n", allocated, alloc_errors);
+    #endif // DEBUG
     
     // Check that allocated objects don't overlap
     check_pointers_integrity(objects, sizes, allocated);
     
+    #ifdef DEBUG
     print_fancy(arena, 100);
+    #endif // DEBUG
     
     TEST_PHASE("Free every third object");
     // Free every third object
@@ -68,9 +73,11 @@ void test_complex_allocation_pattern(void) {
     }
     
     ASSERT(freed_count > 0, "Should successfully free some objects");
-    printf("Freed %d objects\n", freed_count);
     
+    #ifdef DEBUG
+    printf("Freed %d objects\n", freed_count);
     print_fancy(arena, 100);
+    #endif // DEBUG
 
     TEST_PHASE("Allocate small objects");
     // Try to allocate small objects
@@ -99,12 +106,17 @@ void test_complex_allocation_pattern(void) {
     
     ASSERT(small_alloc_count > 0, "Should successfully allocate some small objects");
     ASSERT(pattern_errors == 0, "All small objects memory patterns should be valid");
+    
+    #ifdef DEBUG
     printf("Allocated %d small objects\n", small_alloc_count);
+    #endif // DEBUG
     
     // Check integrity
     check_pointers_integrity(objects, sizes, allocated);
     
+    #ifdef DEBUG
     print_fancy(arena, 100);
+    #endif // DEBUG
     
     TEST_PHASE("Allocate large objects");
     // Try to allocate large objects
@@ -133,12 +145,17 @@ void test_complex_allocation_pattern(void) {
     
     ASSERT(large_alloc_count > 0, "Should successfully allocate some large objects");
     ASSERT(pattern_errors == 0, "All large objects memory patterns should be valid");
+    
+    #ifdef DEBUG
     printf("Allocated %d large objects\n", large_alloc_count);
+    #endif // DEBUG
     
     // Check integrity
     check_pointers_integrity(objects, sizes, allocated);
     
+    #ifdef DEBUG
     print_fancy(arena, 100);
+    #endif // DEBUG
 
     TEST_PHASE("Random deallocation");
     // Randomly free objects
@@ -156,9 +173,11 @@ void test_complex_allocation_pattern(void) {
     }
     
     ASSERT(freed_count > 0, "Should successfully free some objects randomly");
-    printf("Freed %d objects randomly\n", freed_count);
     
+    #ifdef DEBUG
+    printf("Freed %d objects randomly\n", freed_count);
     print_fancy(arena, 100);
+    #endif // DEBUG
     
     TEST_PHASE("Fragmentation stress test");
     // Free even-indexed objects to create fragmentation
@@ -174,9 +193,11 @@ void test_complex_allocation_pattern(void) {
     }
     
     ASSERT(freed_count > 0, "Should successfully free objects during fragmentation test");
-    printf("Freed %d objects to fragment memory\n", freed_count);
     
+    #ifdef DEBUG
+    printf("Freed %d objects to fragment memory\n", freed_count);
     print_fancy(arena, 100);
+    #endif // DEBUG
     
     TEST_PHASE("Allocation in fragmented arena");
     // Try to allocate in fragmented memory
@@ -219,23 +240,30 @@ void test_complex_allocation_pattern(void) {
     
     ASSERT(frag_alloc_count > 0, "Should successfully allocate some objects in fragmented memory");
     ASSERT(pattern_errors == 0, "All objects in fragmented memory should have valid patterns");
-    printf("Allocated %d objects in fragmented memory\n", frag_alloc_count);
     
+    #ifdef DEBUG
+    printf("Allocated %d objects in fragmented memory\n", frag_alloc_count);    
     print_fancy(arena, 100);
+    #endif // DEBUG
     
     TEST_PHASE("Test arena reset");
     // Reset the arena and verify it's usable
     arena_reset(arena);
     ASSERT(arena->free_size_in_tail > 0, "Arena should have free space after reset");
+    
+    #ifdef DEBUG
     print_fancy(arena, 100);
+    #endif // DEBUG
 
     // Try to allocate after reset
     void *post_reset_ptr = arena_alloc(arena, 100);
     ASSERT(post_reset_ptr != NULL, "Should be able to allocate memory after arena reset");
     arena_free_block(post_reset_ptr);
 
+    #ifdef DEBUG
     printf("\n=== Final arena state ===\n");
     print_arena(arena);
+    #endif // DEBUG
     
     arena_free(arena);
 }
