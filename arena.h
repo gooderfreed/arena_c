@@ -154,8 +154,15 @@ Block *insert(Block *tree, Block *new_block) {
 
     if (new_block->size < tree->size)
         tree->left_free = insert(tree->left_free, new_block);
-    else if (new_block->size >= tree->size)
+    else if (new_block->size > tree->size)
         tree->right_free = insert(tree->right_free, new_block);
+    else {
+        // If sizes are equal, compare addresses
+        if (new_block < tree)
+            tree->left_free = insert(tree->left_free, new_block);
+        else
+            tree->right_free = insert(tree->right_free, new_block);
+    }
 
     tree = balance(tree);
     return tree;
@@ -174,8 +181,15 @@ void detach(Block **tree, Block *target) {
         parent = current;
         if (target->size < current->size)
             current = current->left_free;
-        else
+        else if (target->size > current->size)
             current = current->right_free;
+        else {
+            // If sizes are equal, compare addresses
+            if (target < current)
+                current = current->left_free;
+            else
+                current = current->right_free;
+        }
     }
 
     if (!current) return; // In case target is not found
@@ -219,7 +233,9 @@ void detach(Block **tree, Block *target) {
     target->right_free = NULL;
     target->color = RED;
 
-    *tree = balance(*tree);
+    if (*tree) {
+        *tree = balance(*tree);
+    }
 }
 
 /*
@@ -227,18 +243,24 @@ void detach(Block **tree, Block *target) {
  */
 Block *bestFit(Block *root, size_t size) {
     Block *best = NULL;
+    Block *current = root;
     
-    while (root) {
-        if (root->size >= size) {
-            best = root;
-            root = root->left_free;
+    while (current) {
+        if (current->size >= size) {
+            // Update best if we found a better fit or if it's the first fit
+            if (!best || current->size < best->size || 
+                (current->size == best->size && current < best)) {
+                best = current;
+            }
+            current = current->left_free;
         } else {
-            root = root->right_free;
+            current = current->right_free;
         }
     }
 
     return best;
 }
+
 
 /*
  * Make the given block the tail of the arena

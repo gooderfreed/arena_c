@@ -52,4 +52,5 @@ Mkfile.old
 dkms.conf
 
 # Tests
-tests/stress_test_debug
+tests/stress_test_*
+tests/same_size_test_*

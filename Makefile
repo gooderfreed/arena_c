@@ -11,7 +11,7 @@ TEST_BINS = $(TEST_SRCS:.c=)
 .PHONY: all clean run run_debug test valgrind list
 
 # Default goal: compile and run all tests in debug mode
-all: clean test
+all: clean list
 
 # Compilation of each test without debug information
 $(TEST_DIR)/%: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
@@ -20,6 +20,17 @@ $(TEST_DIR)/%: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
 # Compilation of each test with debug information
 $(TEST_DIR)/%_debug: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
 	$(CC) $(CFLAGS) $(DEBUG_FLAGS) $< -o $@
+
+# Pattern rule for running individual tests
+test_%: $(TEST_DIR)/%_test_debug
+	@echo "\n--- Running $< ---"
+	@./$<
+	@if [ $$? -ne 0 ]; then \
+		echo "\nTest $< FAILED!"; \
+		exit 1; \
+	else \
+		echo "\nTest $< PASSED!"; \
+	fi
 
 # Compilation of all tests
 build: $(TEST_BINS)
@@ -63,7 +74,7 @@ valgrind: build
 	@echo "\nAll memory checks completed."
 
 # Testing: compile and run all tests in debug mode
-test: build_debug
+tests: build_debug
 	@for test in $(TEST_SRCS:%.c=%_debug) ; do \
 		echo "\n--- Running $$test ---" ; \
 		./$$test ; \
@@ -87,5 +98,7 @@ clean:
 list:
 	@echo "Available tests:"
 	@for test in $(TEST_SRCS) ; do \
-		echo "  $${test%.c}" ; \
+		basename=$$(basename $${test%.c} _test); \
+		echo "  make test_$$basename" ; \
 	done 
+	@echo "Or run all tests with 'make tests'"
