@@ -22,6 +22,15 @@ static int tests_failed = 0;
 #define ANSI_COLOR_BLUE    "\x1b[34m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
+/*
+ * Functions prototypes for testing
+*/
+void print_test_summary();
+bool pointers_overlap(void *p1, size_t size1, void *p2, size_t size2);
+void check_pointers_integrity(void **pointers, size_t *sizes, int count);
+void fill_memory_pattern(void *ptr, size_t size, int pattern);
+bool verify_memory_pattern(void *ptr, size_t size, int pattern);
+
 /* 
  * Macro for checking a condition (full output)
 */
@@ -68,7 +77,7 @@ static int tests_failed = 0;
 /* 
  * Function for printing test results
 */
-static void print_test_summary() {
+void print_test_summary() {
     printf("\n");
     printf(ANSI_COLOR_BLUE "=== Test Results ===\n" ANSI_COLOR_RESET);
     printf("Total tests: %d\n", tests_total);
@@ -91,7 +100,7 @@ static void print_test_summary() {
  * Functions for checking the integrity of the arena
  * Checks that pointers do not overlap
 */
-static bool pointers_overlap(void *p1, size_t size1, void *p2, size_t size2) {
+bool pointers_overlap(void *p1, size_t size1, void *p2, size_t size2) {
     char *c1 = (char*)p1;
     char *c2 = (char*)p2;
     return (c1 < (c2 + size2)) && (c2 < (c1 + size1));
@@ -100,7 +109,7 @@ static bool pointers_overlap(void *p1, size_t size1, void *p2, size_t size2) {
 /* 
  * Checking the integrity of the array of pointers
 */
-static void check_pointers_integrity(void **pointers, size_t *sizes, int count) {
+void check_pointers_integrity(void **pointers, size_t *sizes, int count) {
     for (int i = 0; i < count; i++) {
         if (!pointers[i]) continue;
         
@@ -116,14 +125,14 @@ static void check_pointers_integrity(void **pointers, size_t *sizes, int count) 
 /* 
  * Filling the allocated block of memory with a test pattern
 */
-static void fill_memory_pattern(void *ptr, size_t size, int pattern) {
+void fill_memory_pattern(void *ptr, size_t size, int pattern) {
     memset(ptr, pattern & 0xFF, size);
 }
 
 /* 
  * Checking the preservation of the pattern in memory
 */
-static bool verify_memory_pattern(void *ptr, size_t size, int pattern) {
+bool verify_memory_pattern(void *ptr, size_t size, int pattern) {
     unsigned char expected = pattern & 0xFF;
     unsigned char *bytes = (unsigned char*)ptr;
     

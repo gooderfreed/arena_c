@@ -15,7 +15,6 @@ void test_same_size_allocation(void) {
     ASSERT(arena != NULL, "Arena creation should succeed");
 
     void *blocks[INITIAL_BLOCKS + ADDITIONAL_BLOCKS] = {0};
-    size_t initial_tail_size = arena->free_size_in_tail;
     
     TEST_PHASE("Initial allocations");
     // Allocate INITIAL_BLOCKS blocks of the same size
