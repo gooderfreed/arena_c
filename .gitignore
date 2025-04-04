@@ -54,3 +54,4 @@ dkms.conf
 # Tests
 tests/stress_test_*
 tests/same_size_test_*
+tests/validation_test_*
