@@ -719,7 +719,6 @@ void print_fancy(Arena *arena, size_t bar_size) {
         } else if (segment_type == '-') {
             printf("\033[40m \033[0m"); // Black for empty space
         }
-        
     }
     
     printf("│\n└");
