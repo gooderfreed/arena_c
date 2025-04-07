@@ -18,14 +18,17 @@
 typedef struct Block Block;
 typedef struct Arena Arena;
 
-// Union for block flags
+/*
+ * Union for block flags
+ * Used to store the flags of a block in a single byte
+ */
 typedef union BlockFlags {
     struct {
-        bool is_free : 1;  // Flag indicating whether the block is free.
-        bool color : 1;    // Color for RB tree: 0 = RED, 1 = BLACK
-        unsigned padding : 6;
+        bool is_free     : 1;    // Flag indicating whether the block is free.
+        bool color       : 1;    // Color for RB tree: 0 = RED, 1 = BLACK
+        unsigned padding : 6;    // Padding to make the union size 8 bytes
     } bits;
-    char raw;
+    char raw;                    // Raw byte value, used for comparison as a magic number
 } BlockFlags;
 
 
@@ -385,8 +388,6 @@ static void *alloc_in_free_blocks(Arena *arena, size_t size) {
  * Tries to allocate memory in the tail or from free blocks
  * Returns NULL if there is not enough space
  */
-#include <stdio.h>
-
 void *arena_alloc(Arena *arena, size_t size) {
     if (size == 0 || arena == NULL || size > arena->capacity) return NULL;
     // check if there is enough space in the free blocks
