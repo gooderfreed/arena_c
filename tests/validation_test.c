@@ -1,6 +1,8 @@
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 #include "test_utils.h"
+#include <limits.h>
+#include <stdint.h>
 
 void test_invalid_allocations(void) {
     TEST_CASE("Invalid Allocation Scenarios");
@@ -59,13 +61,59 @@ void test_invalid_arena_creation(void) {
     Arena *negative_size_arena = arena_new_dynamic(-1);
     ASSERT(negative_size_arena == NULL, "Negative size arena creation should fail");
 
+    TEST_PHASE("Very large size arena");
+    Arena *large_size_arena = arena_new_dynamic(INT64_MAX);
+    ASSERT(large_size_arena == NULL, "Very large size arena creation should fail");
+
+    TEST_PHASE("NULL memory for static arena");
+    Arena *null_memory_arena = arena_new_static(NULL, 1024);
+    ASSERT(null_memory_arena == NULL, "Static arena with NULL memory should fail");
+
+    TEST_PHASE("Negative size for static arena");
+    void *mem = malloc(1024);
+    Arena *negative_static_arena = arena_new_static(mem, -1);
+    ASSERT(negative_static_arena == NULL, "Static arena with negative size should fail");
+    free(mem);
+
     TEST_PHASE("Free NULL arena");
     arena_free(NULL); // Should not crash
+    ASSERT(true, "Free NULL arena should not crash");
+
+    TEST_PHASE("Reset NULL arena");
+    arena_reset(NULL); // Should not crash
+    ASSERT(true, "Reset NULL arena should not crash");
+}
+
+void test_boundary_conditions(void) {
+    TEST_CASE("Boundary Conditions");
+
+    TEST_PHASE("Arena size just above minimum");
+    size_t min_size = sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE;
+    Arena *min_size_arena = arena_new_dynamic(min_size);
+    ASSERT(min_size_arena != NULL, "Arena with minimum valid size should succeed");
+    arena_free(min_size_arena);
+
+    TEST_PHASE("Arena size just below minimum");
+    Arena *below_min_arena = arena_new_dynamic(min_size - 1);
+    ASSERT(below_min_arena == NULL, "Arena with size below minimum should fail");
+
+    TEST_PHASE("Static arena with minimum size");
+    void *min_memory = malloc(min_size);
+    Arena *min_static_arena = arena_new_static(min_memory, min_size);
+    ASSERT(min_static_arena != NULL, "Static arena with minimum valid size should succeed");
+    free(min_memory);
+
+    TEST_PHASE("Static arena with size below minimum");
+    void *small_memory = malloc(min_size - 1);
+    Arena *small_static_arena = arena_new_static(small_memory, min_size - 1);
+    ASSERT(small_static_arena == NULL, "Static arena with size below minimum should fail");
+    free(small_memory);
 }
 
 int main(void) {
     test_invalid_allocations();
     test_invalid_arena_creation();
+    test_boundary_conditions();
     
     print_test_summary();
     return tests_failed > 0 ? 1 : 0;

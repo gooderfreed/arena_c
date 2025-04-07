@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/types.h>  // for ssize_t
 
 #ifndef MIN_BUFFER_SIZE
     // Default minimum buffer size for the arena.
@@ -65,8 +66,8 @@ struct Arena {
 };
 
 
-Arena *arena_new_dynamic(size_t size);
-Arena *arena_new_static(void *memory, size_t size);
+Arena *arena_new_dynamic(ssize_t size);
+Arena *arena_new_static(void *memory, ssize_t size);
 void arena_reset(Arena *arena);
 void *arena_alloc(Arena *arena, size_t size);
 void arena_free_block(void *data);
@@ -360,7 +361,7 @@ static void *alloc_in_free_blocks(Arena *arena, size_t size) {
     if (best) {
         detach(&arena->free_blocks, best);
         best->flags.bits.is_free = false;
-        if (best->size > size + sizeof(Block) + MIN_BUFFER_SIZE) {
+        if (best->size >= size + sizeof(Block) + MIN_BUFFER_SIZE) {
             Block *block_after = next_block(arena, best);
             size_t new_block_size = best->size - size - sizeof(Block);
             best->size = size;
@@ -478,13 +479,13 @@ void arena_free_block(void *data) {
 /*
  * Create a static arena
  * Initializes an arena using preallocated memory and sets up the first block
- * Returns NULL if the provided size is too small
+ * Returns NULL if the provided size is too small, memory is NULL or size is negative
  */
-Arena *arena_new_static(void *memory, size_t size) {
-    if (size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
+Arena *arena_new_static(void *memory, ssize_t size) {
+    if (!memory || size < 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
 
     Arena *arena = (Arena *)memory;
-    arena->capacity = size - sizeof(Arena);
+    arena->capacity = (size_t)size - sizeof(Arena);
     arena->data = (char *)memory + sizeof(Arena);
     
     Block *block = (Block *)arena->data;
@@ -503,11 +504,11 @@ Arena *arena_new_static(void *memory, size_t size) {
 /*
  * Create a dynamic arena
  * Allocates memory for the arena and initializes it as a dynamic arena
- * Returns NULL if the requested size is too small
+ * Returns NULL if the requested size is too small or size is negative
  */
-Arena *arena_new_dynamic(size_t size) {
-    if (size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
-    void *data = malloc(size);
+Arena *arena_new_dynamic(ssize_t size) {
+    if (size < 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
+    void *data = malloc((size_t)size);
     if (!data) return NULL;
     Arena *arena = arena_new_static(data, size);
 
@@ -521,6 +522,7 @@ Arena *arena_new_dynamic(size_t size) {
  * Clears the arena's blocks and resets it to the initial state without freeing memory
  */
 void arena_reset(Arena *arena) {
+    if (!arena) return;
     Block *block = (Block *)arena->data;
     block->size = 0;
     block->flags.bits.is_free = true;

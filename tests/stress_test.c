@@ -268,8 +268,86 @@ void test_complex_allocation_pattern(void) {
     arena_free(arena);
 }
 
+void test_block_merging(void) {
+    TEST_CASE("Block Merging and Fragmentation");
+
+    // Create an arena
+    Arena *arena = arena_new_dynamic(ARENA_SIZE/10);
+    ASSERT(arena != NULL, "Arena creation should succeed");
+
+    // Allocate three blocks of 1KB each
+    size_t block_size = 100;
+    void *block1 = arena_alloc(arena, block_size);
+    void *block2 = arena_alloc(arena, block_size);
+    void *block3 = arena_alloc(arena, block_size);
+    
+    ASSERT(block1 != NULL && block2 != NULL && block3 != NULL, 
+           "Should successfully allocate three blocks");
+
+    #ifdef DEBUG
+    printf("\nInitial state after three allocations:\n");
+    print_fancy(arena, 100);
+    #endif // DEBUG
+
+    // Free first two blocks
+    arena_free_block(block1);
+    arena_free_block(block2);
+
+    #ifdef DEBUG
+    printf("\nState after freeing first two blocks:\n");
+    print_fancy(arena, 100);
+    #endif // DEBUG
+
+    // Try to allocate a block that fits exactly in the space of two freed blocks
+    // Size = 2 * block_size + sizeof(Block) (for metadata)
+    size_t merged_size = 2 * block_size + sizeof(Block);
+    void *merged_block = arena_alloc(arena, merged_size);
+    ASSERT(merged_block != NULL, "Should successfully allocate merged block");
+    
+    #ifdef DEBUG
+    printf("\nState after allocating merged block:\n");
+    print_fancy(arena, 100);
+    #endif // DEBUG
+
+    // Free the merged block
+    arena_free_block(merged_block);
+
+    // Try to allocate a block that's slightly smaller than the merged space
+    // This should create a new free block from the remaining space
+    size_t smaller_size = merged_size - sizeof(Block) - MIN_BUFFER_SIZE;
+    void *smaller_block = arena_alloc(arena, smaller_size);
+    ASSERT(smaller_block != NULL, "Should successfully allocate smaller block");
+
+    #ifdef DEBUG
+    printf("\nState after allocating smaller block:\n");
+    print_fancy(arena, 100);
+    #endif // DEBUG
+
+    // Verify that a new free block was created
+    ASSERT(arena->free_blocks != NULL, "Should have a free block from remaining space");
+    ASSERT(arena->free_blocks->size == MIN_BUFFER_SIZE, "Free block should have exactly MIN_BUFFER_SIZE");
+
+    // Free the smaller block
+    arena_free_block(smaller_block);
+
+    // Try to allocate a block that's just 1 byte too large to cause fragmentation
+    size_t no_split_size = merged_size - sizeof(Block) - MIN_BUFFER_SIZE + 1;
+    void *no_split_block = arena_alloc(arena, no_split_size);
+    ASSERT(no_split_block != NULL, "Should successfully allocate block without splitting");
+    
+    #ifdef DEBUG
+    printf("\nState after allocating no split block:\n");
+    print_fancy(arena, 100);
+    #endif // DEBUG
+
+    ASSERT(arena->free_blocks == NULL, "Should not have any free blocks after allocation");
+
+    arena_free(arena);
+}
+
 int main(void) {
     test_complex_allocation_pattern();
+    test_block_merging();
     
     // Print test summary
     print_test_summary();
