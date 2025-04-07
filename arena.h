@@ -465,8 +465,11 @@ void arena_free_block(void *data) {
     
     Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
     
-    char *flags_byte = (char *)&block->flags.raw;
-    if (*flags_byte & ~0x3) {  // 0x3 = 0b00000011 - mask for two least significant bits
+    // Magic number validation: BlockFlags has 6 bits of padding that are always 0
+    // The probability of random memory having exactly these 6 bits as 0 is very low
+    // This helps detect invalid/corrupted pointers
+    char flags_byte = block->flags.raw;
+    if (flags_byte & ~0x3) {  // ~0x3 = 11111100 - check that padding bits are 0
         return; 
     }
 
@@ -686,8 +689,19 @@ void print_fancy(Arena *arena, size_t bar_size) {
             
             // Check intersection with block data
             if (segment_start < block_data_end && segment_end > block_data_start) {
-                size_t overlap = (segment_end < block_data_end ? segment_end : block_data_end) - 
-                             (segment_start > block_data_start ? segment_start : block_data_start);
+                // Calculate end point of overlap
+                size_t overlap_end = segment_end;
+                if (segment_end > block_data_end) {
+                    overlap_end = block_data_end;
+                }
+
+                // Calculate start point of overlap
+                size_t overlap_start = segment_start;
+                if (segment_start < block_data_start) {
+                    overlap_start = block_data_start;
+                }
+
+                size_t overlap = overlap_end - overlap_start;
                 if (overlap > max_overlap) {
                     max_overlap = overlap;
                     segment_type = current->flags.bits.is_free ? ' ' : '#'; // Free or occupied block

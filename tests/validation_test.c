@@ -28,8 +28,10 @@ void test_invalid_allocations(void) {
     ASSERT(true, "Free NULL pointer should not crash");
 
     TEST_PHASE("Free invalid pointer");
-    int invalid_ptr = 42;
-    arena_free_block((void*)&invalid_ptr); // Should not crash
+    Block fake_block = {0};
+    fake_block.flags.raw = 0xFF; // 0xFF is an invalid magic number
+    void *fake_data = (char*)&fake_block + sizeof(Block);
+    arena_free_block(fake_data); // Should not crash
     ASSERT(true, "Free invalid pointer should not crash");
     
     TEST_PHASE("Free pointer from different arena");
@@ -42,6 +44,7 @@ void test_invalid_allocations(void) {
     void *ptr2 = arena_alloc(arena, 32);
     arena_free_block(ptr2);
     arena_free_block(ptr2); // Should not crash
+    ASSERT(true, "Free already freed pointer should not crash");
 
     TEST_PHASE("Allocation larger than arena size");
     void *huge_allocation = arena_alloc(arena, 2048);

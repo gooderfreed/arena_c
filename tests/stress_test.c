@@ -214,6 +214,11 @@ void test_complex_allocation_pattern(void) {
             case 2: size = 120; break;
             case 3: size = 30;  break;
             case 4: size = 90;  break;
+            default:
+                // This should never happen due to modulo 5,
+                // but better to have a sane default
+                size = 20;
+                break;
         }
         
         void *ptr = arena_alloc(arena, size);
