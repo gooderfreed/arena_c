@@ -494,7 +494,11 @@ Arena *arena_new_static(void *memory, ssize_t size) {
     Block *block = (Block *)arena->data;
     block->size = 0;
     block->flags.bits.is_free = true;
+    block->flags.bits.color = RED;
     block->prev = NULL;
+    block->left_free = NULL;
+    block->right_free = NULL;
+    block->arena = arena;
 
     arena->tail = block;
     arena->free_size_in_tail = arena->capacity - sizeof(Block);

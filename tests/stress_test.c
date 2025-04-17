@@ -350,10 +350,105 @@ void test_block_merging(void) {
     arena_free(arena);
 }
 
+// Test specific LLRB detach scenarios
+void test_llrb_detach_scenarios(void) {
+    TEST_CASE("LLRB Detach Scenarios");
+
+    // Scenario: Detach Root (and empty the tree)
+    TEST_PHASE("Detach Root Node");
+    Arena *arena_root = arena_new_dynamic(1024);
+    ASSERT(arena_root != NULL, "[Detach Root] Arena creation should succeed");
+    #ifdef DEBUG
+    print_arena(arena_root);
+    print_fancy(arena_root, 100);
+    #endif // DEBUG
+
+    // Allocate two blocks, so the first one is not the tail
+    void *ptr_a_root = arena_alloc(arena_root, 100);
+    #ifdef DEBUG
+    print_fancy(arena_root, 100);
+    #endif // DEBUG
+    void *ptr_b_root = arena_alloc(arena_root, 200);
+    #ifdef DEBUG
+    print_fancy(arena_root, 100);
+    #endif // DEBUG
+    ASSERT(ptr_a_root != NULL && ptr_b_root != NULL, "[Detach Root] Initial allocations should succeed");
+
+    // Free the first block (A). It should become the root of the free tree.
+    arena_free_block(ptr_a_root);
+    #ifdef DEBUG
+    print_fancy(arena_root, 100);
+    #endif // DEBUG
+    ASSERT(arena_root->free_blocks != NULL, "[Detach Root] Free list should contain block A");
+    ASSERT(arena_root->free_blocks->size == 100, "[Detach Root] Root of free list should be block A");
+
+    // Allocate the same size again (100). This should find block A and detach it.
+    void *ptr_c_root = arena_alloc(arena_root, 100);
+    #ifdef DEBUG
+    print_fancy(arena_root, 100);
+    #endif // DEBUG
+    ASSERT(ptr_c_root != NULL, "[Detach Root] Allocation reusing block A should succeed");
+    ASSERT(ptr_c_root == ptr_a_root, "[Detach Root] Reused block should be the same memory as A");
+
+    // The free tree should now be empty
+    ASSERT(arena_root->free_blocks == NULL, "[Detach Root] Free list should be empty after detaching root");
+
+    arena_free(arena_root);
+
+
+
+    // Scenario: Detach Right Child
+    TEST_PHASE("Detach Right Child Node");
+    Arena *arena_right = arena_new_dynamic(2048);
+    ASSERT(arena_right != NULL, "[Detach Right] Arena creation should succeed");
+    #ifdef DEBUG
+    print_arena(arena_right);
+    print_fancy(arena_right, 100);
+    #endif // DEBUG
+
+    // Allocate blocks, free them in a specific order to (hopefully) create B -> C structure
+    void *ptr_a_right = arena_alloc(arena_right, 50);
+    void *ptr_b_right = arena_alloc(arena_right, 150);
+    void *ptr_c_right = arena_alloc(arena_right, 200);
+    ASSERT(ptr_a_right && ptr_b_right && ptr_c_right, "[Detach Right] Initial allocations should succeed");
+    #ifdef DEBUG
+    print_fancy(arena_right, 100);
+    #endif // DEBUG
+
+    arena_free_block(ptr_b_right); // Free 150 first (potential root)
+    #ifdef DEBUG
+    print_fancy(arena_right, 100);
+    #endif // DEBUG
+
+    arena_free_block(ptr_a_right); // Free 50 (potential left child)
+    #ifdef DEBUG
+    print_fancy(arena_right, 100);
+    #endif // DEBUG
+
+    arena_free_block(ptr_c_right); // Free 200 (potential right child)
+    #ifdef DEBUG
+    print_fancy(arena_right, 100);
+    #endif // DEBUG
+    // Exact tree structure depends on LLRB insert/balance, but C is likely inserted to the right of B
+
+    // Allocate the right child's size
+    void *ptr_d_right = arena_alloc(arena_right, 200);
+    ASSERT(ptr_d_right != NULL, "[Detach Right] Allocation reusing the right child block should succeed");
+    #ifdef DEBUG
+    print_arena(arena_right);
+    print_fancy(arena_right, 100);
+    #endif // DEBUG
+    // We can't easily assert the tree structure changed correctly without exposing internals,
+    // but if this allocation succeeds and doesn't crash, it implies detach handled the right child case.
+
+    arena_free(arena_right);
+}
+
 int main(void) {
     test_complex_allocation_pattern();
     test_block_merging();
-    
+    test_llrb_detach_scenarios();
+
     // Print test summary
     print_test_summary();
     
