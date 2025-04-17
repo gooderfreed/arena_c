@@ -1,6 +1,8 @@
 # Header-Only Arena Allocator in C
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CodeFactor](https://www.codefactor.io/repository/github/gooderfreed/arena_c/badge)](https://www.codefactor.io/repository/github/gooderfreed/arena_c)
+<!--[![Build Status](https://github.com/gooderfreed/arena_c/actions/workflows/build.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/build.yml)-->
 
 **A fast, efficient, and easy-to-use header-only arena memory allocator library written in pure C.**
 

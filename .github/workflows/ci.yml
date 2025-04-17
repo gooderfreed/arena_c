@@ -1,0 +1,39 @@
+name: C Project CI
+
+on:
+  push:
+    branches: [ "main", "master" ] # Or your default branch
+    paths:
+      # Trigger only if files *within* the repo change
+      - 'arena.h'
+      - 'Makefile'
+      - 'tests/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [ "main", "master" ] # Or your default branch
+    paths:
+      - 'arena.h'
+      - 'Makefile'
+      - 'tests/**'
+      - '.github/workflows/ci.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest # Use the latest Ubuntu runner
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Checkout repository code (will be in the root, i.e., arena_c)
+
+    - name: Set up build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential valgrind # Install compiler (gcc) and valgrind
+
+    - name: Build and Run Tests
+      # Makefile is in the root, so no working-directory needed
+      run: make tests
+
+    - name: Run Valgrind Memory Check
+      # Makefile is in the root, so no working-directory needed
+      run: make valgrind 
