@@ -47,6 +47,8 @@ jobs:
       with:
         # CODECOV_TOKEN is stored in GitHub secrets
         token: ${{ secrets.CODECOV_TOKEN }}
+        # Specify the path to the configuration file
+        config_file: ./.github/codecov.yml
         # Optional: fail CI if Codecov upload fails
         fail_ci_if_error: true
         # Verbose output from the action

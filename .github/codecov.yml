@@ -1,0 +1,6 @@
+# Codecov configuration
+# Placed in .github/ to avoid cluttering the root
+
+coverage:
+  ignore:
+    - "tests/*"  # Ignore all files within the tests/ directory 
