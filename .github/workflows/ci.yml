@@ -36,4 +36,18 @@ jobs:
 
     - name: Run Valgrind Memory Check
       # Makefile is in the root, so no working-directory needed
-      run: make valgrind 
+      run: make valgrind
+
+    - name: Build and Run Tests (for Coverage)
+      # This target generates .gcda/.gcno files in tests/
+      run: make coverage
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        # CODECOV_TOKEN is stored in GitHub secrets
+        token: ${{ secrets.CODECOV_TOKEN }}
+        # Optional: fail CI if Codecov upload fails
+        fail_ci_if_error: true
+        # Verbose output from the action
+        verbose: true 

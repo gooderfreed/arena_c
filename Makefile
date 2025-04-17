@@ -3,12 +3,21 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -g -I.
 DEBUG_FLAGS = -DDEBUG
+COV_FLAGS = -fprofile-arcs -ftest-coverage # Coverage flags
+LDFLAGS_COV = -lgcov # Linker flag for coverage
 
 TEST_DIR = tests
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
-TEST_BINS = $(TEST_SRCS:.c=)
+# Generate names for coverage object files
+TEST_COV_OBJS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(TEST_DIR)/%.cov.o)
+# Generate names for coverage executables
+TEST_COV_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(TEST_DIR)/%_coverage)
 
-.PHONY: all clean run tests tests_full list
+# Define the primary source file to check coverage for.
+# Adjust if your implementation is in a .c file.
+COVERAGE_SRC = arena.h
+
+.PHONY: all clean run tests tests_full list coverage build_coverage
 
 # Default goal: show available commands
 all: clean list
@@ -20,6 +29,18 @@ $(TEST_DIR)/%_silent: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
 # Compilation of each test with debug information
 $(TEST_DIR)/%_debug: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
 	$(CC) $(CFLAGS) $(DEBUG_FLAGS) $< -o $@
+
+# --- Coverage Build Steps ---
+# 1. Compile source files into object files with coverage flags
+#    This generates the .gcno files alongside the object files.
+$(TEST_DIR)/%.cov.o: $(TEST_DIR)/%.c arena.h $(TEST_DIR)/test_utils.h
+	$(CC) $(CFLAGS) $(COV_FLAGS) -c $< -o $@
+
+# 2. Link object files into executables
+#    We still need COV_FLAGS during linking for gcov to work correctly.
+$(TEST_DIR)/%_coverage: $(TEST_DIR)/%.cov.o
+	$(CC) $(CFLAGS) $(COV_FLAGS) $^ $(LDFLAGS_COV) -o $@
+# --- End Coverage Build Steps ---
 
 # Pattern rule for running individual tests (always with debug)
 test_%: $(TEST_DIR)/%_test_debug
@@ -37,6 +58,9 @@ build_silent: $(TEST_SRCS:%.c=%_silent)
 
 # Compilation of all tests with debug information
 build_debug: $(TEST_SRCS:%.c=%_debug)
+
+# Compilation of all tests with coverage information (depends on executables)
+build_coverage: $(TEST_COV_BINS)
 
 # Memory leak check using valgrind
 valgrind: build_silent
@@ -83,15 +107,38 @@ tests_full: build_debug
 		echo "\nAll tests PASSED!"; \
 	fi
 
-# Cleaning binary files
+# Coverage: build with coverage flags and run tests to generate .gcda/.gcno files
+coverage: clean build_coverage
+	@echo "Running all tests to generate coverage data..."
+	@exit_code=0; \
+	for test in $(TEST_COV_BINS) ; do \
+		echo "\n--- Running $$test (for coverage) ---" ; \
+		./$$test ; \
+		if [ $$? -ne 0 ]; then \
+			echo "\nTest $$test FAILED with exit code $$?"; \
+			exit_code=1; \
+		fi; \
+	done; \
+	if [ "$$exit_code" = "1" ]; then \
+		echo "\nSome tests FAILED! Coverage data generation might be incomplete."; \
+		exit 1; \
+	else \
+		echo "\nCoverage data generated."; \
+	fi
+
+# Cleaning binary files and coverage files
 clean:
-	rm -f $(TEST_SRCS:%.c=%_silent) $(TEST_SRCS:%.c=%_debug)
+	rm -f $(TEST_SRCS:%.c=%_silent) $(TEST_SRCS:%.c=%_debug) $(TEST_COV_BINS)
+	rm -f $(TEST_DIR)/*.o $(TEST_DIR)/*.cov.o # Clean object files
+	rm -f *.gcov # Clean root gcov files if any generated manually
+	rm -f $(TEST_DIR)/*.gcda $(TEST_DIR)/*.gcno # Clean coverage data files
 
 # Show available tests
 list:
 	@echo "Available commands:"
 	@echo "  make tests      - run all tests without debug output"
 	@echo "  make tests_full - run all tests with debug output"
+	@echo "  make coverage   - build & run tests to generate coverage data for CodeCov"
 	@echo "\nAvailable individual tests (always with debug output):"
 	@for test in $(TEST_SRCS) ; do \
 		basename=$$(basename $${test%.c} _test); \
