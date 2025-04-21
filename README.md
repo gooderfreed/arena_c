@@ -1,9 +1,11 @@
 # Header-Only Arena Allocator in C
 
+<!-- Look ma, I added badges! Now my toy is a "serious project"! -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CodeFactor](https://www.codefactor.io/repository/github/gooderfreed/arena_c/badge)](https://www.codefactor.io/repository/github/gooderfreed/arena_c)
 [![codecov](https://codecov.io/gh/gooderfreed/arena_c/graph/badge.svg?token=QJ3YND0OBF)](https://codecov.io/gh/gooderfreed/arena_c)
 [![C Project CI](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml)
+<!-- There. Shiny enough? Now let's get back to actual work. -->
 
 **A fast, efficient, and easy-to-use header-only arena memory allocator library written in pure C.**
 
@@ -68,6 +70,26 @@ In **one** of your `.c` files (e.g., `arena_impl.c`), define the `ARENA_IMPLEMEN
 ```
 
 **Important:**  Define `ARENA_IMPLEMENTATION` in **only one** C file in your project. This will compile the implementation of the arena allocator functions.  In all other files where you use the arena allocator, just include `arena_allocator.h` without defining `ARENA_IMPLEMENTATION`.
+
+### Alternative Integration for Large Projects
+
+In complex projects with intricate include hierarchies, ensuring that `ARENA_IMPLEMENTATION` is defined in exactly one `.c` file can be challenging. An alternative approach is to compile the header file directly into its own object file.
+
+You can achieve this by adding a specific build rule to your build system (e.g., Makefile, CMake). Here's an example using `gcc`:
+
+```bash
+# Example Makefile rule
+arena.o: arena_allocator.h
+	gcc -x c -DARENA_IMPLEMENTATION -c arena_allocator.h -o arena.o
+```
+
+**Explanation:**
+
+*   `gcc -x c`: This flag tells `gcc` to treat the input file (`arena_allocator.h`) as a C source file, even though it has a `.h` extension.
+*   `-DARENA_IMPLEMENTATION`: This defines the necessary macro to include the function implementations.
+*   `-c`: This tells `gcc` to compile the source file into an object file (`arena.o`) without linking.
+
+Then, simply link the resulting `arena.o` object file with the rest of your project. This isolates the implementation into a single compilation unit, avoiding potential conflicts in large codebases.
 
 ### 3. Create an Arena
 
