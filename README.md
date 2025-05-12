@@ -9,6 +9,8 @@
 
 **A fast, efficient, and easy-to-use header-only arena memory allocator library written in pure C.**
 
+This library serves as the core memory allocator for the [Zen Framework](https://github.com/gooderfreed/Zen) - a lightweight, modular framework for building console applications in C. The arena allocator provides efficient memory management for Zen's component-oriented architecture and interactive features.
+
 ## Overview
 
 This library provides a header-only implementation of an arena memory allocator in C. Arena allocation is a memory management technique that allocates memory in large chunks (arenas) and then subdivides those chunks into smaller blocks for application use. This approach offers significant performance benefits and control over memory allocation and deallocation, especially in scenarios with frequent allocations and deallocations of objects of similar lifecycles.
