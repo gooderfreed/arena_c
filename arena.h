@@ -3,12 +3,23 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
+
+#ifdef _win32
+#include 
+#define ssize_t SSIZE_T
+#else
 #include <sys/types.h>  // for ssize_t
+#endif
 
 #ifndef MIN_BUFFER_SIZE
     // Default minimum buffer size for the arena.
     #define MIN_BUFFER_SIZE 16
 #endif
+
+#define FLAG_IS_FREE ((uintptr_t)1)
+#define FLAG_COLOR   ((uintptr_t)2)
+#define POINTER_MASK (~(uintptr_t)7)
 
 #define RED false
 #define BLACK true
@@ -20,33 +31,23 @@ typedef struct Block Block;
 typedef struct Arena Arena;
 
 /*
- * Union for block flags
- * Used to store the flags of a block in a single byte
- */
-typedef union BlockFlags {
-    struct {
-        bool is_free     : 1;    // Flag indicating whether the block is free.
-        bool color       : 1;    // Color for RB tree: 0 = RED, 1 = BLACK
-        unsigned padding : 6;    // Padding to make the union size 8 bytes
-    } bits;
-    char raw;                    // Raw byte value, used for comparison as a magic number
-} BlockFlags;
-
-
-/*
  * Memory block structure.
  * Represents a chunk of memory and metadata for its management within the arena.
  */
 struct Block {
     size_t size;          // Size of the data block.
-    Block *prev;          // Pointer to the previous block in the global list.
+    Block *prev;          // Pointer to the previous block in the global list also stores flags via pointer tagging.
 
-    Arena *arena;         // Pointer to the arena that allocated this block.
-
-    BlockFlags flags;
-    
-    Block *left_free;     // Left child in red-black tree
-    Block *right_free;    // Right child in red-black tree
+    union {
+        struct {
+            Block *left_free;     // Left child in red-black tree
+            Block *right_free;    // Right child in red-black tree
+        };
+        struct {
+            Arena *arena;         // Pointer to the arena that allocated this block.
+            void  *magic;         // Magic number for validation random pointer
+        };
+    };
 };
 
 /*
@@ -84,6 +85,76 @@ void print_llrb_tree(Block *node, int depth);
 
 #ifdef ARENA_IMPLEMENTATION
 /*
+ * Get pointer
+ * Retrieves the actual pointer address without flags
+ */
+static inline Block *get_pointer(Block *ptr) {
+    return (Block *)((uintptr_t)ptr & POINTER_MASK);
+}
+
+/*
+ * Get is free
+ * Retrieves the is_free flag of the block pointer
+ */
+static inline bool get_is_free(Block *ptr) {
+    return ((uintptr_t)ptr->prev & FLAG_IS_FREE);
+}
+
+/*
+ * Get color
+ * Retrieves the color flag of the block pointer
+ */
+static inline bool get_color(Block *ptr) {
+    return ((uintptr_t)ptr->prev & FLAG_COLOR);
+}
+
+/*
+ * Set is free
+ * Updates the is_free flag of the block pointer
+ */
+static inline void set_is_free(Block *ptr, bool is_free) {
+    uintptr_t int_ptr = (uintptr_t)(ptr->prev);
+    if (is_free) {
+        int_ptr |= FLAG_IS_FREE;
+    }
+    else {
+        int_ptr &= ~FLAG_IS_FREE;
+    }
+    ptr->prev = (Block *)int_ptr;
+}
+
+/*
+ * Set color
+ * Updates the color flag of the block pointer
+ */
+static inline void set_color(Block *ptr, bool color) {
+    uintptr_t int_ptr = (uintptr_t)(ptr->prev);
+    if (color) {
+        int_ptr |= FLAG_COLOR;
+    }
+    else {
+        int_ptr &= ~FLAG_COLOR;
+    }
+    ptr->prev = (Block *)int_ptr;
+}
+
+/*
+ * Override address
+ * Combines the address of the target with the flags of the source
+ */
+static inline Block *override_address(Block *source, Block *target) {
+    return (Block *)(((uintptr_t)source & ~POINTER_MASK) + ((uintptr_t)target & POINTER_MASK));
+}
+
+/*
+ * Override previous block pointer
+ * Safely updates the previous block pointer while preserving flags
+ */
+static inline void override_prev(Block *block, Block *new) {
+    block->prev = override_address(block->prev, new);
+}
+
+/*
  * Safe next block pointer
  * Checks if the next block exists and is not in the tail free space
  */
@@ -119,8 +190,8 @@ Block *rotateLeft(Block *current_block) {
     Block *x = current_block->right_free;
     current_block->right_free = x->left_free;
     x->left_free = current_block;
-    x->flags.bits.color = current_block->flags.bits.color;
-    current_block->flags.bits.color = RED;
+    set_color(x, get_color(current_block));
+    set_color(current_block, RED);
     return x;
 }
 
@@ -132,8 +203,8 @@ Block *rotateRight(Block *current_block) {
     Block *x = current_block->left_free;
     current_block->left_free = x->right_free;
     x->right_free = current_block;
-    x->flags.bits.color = current_block->flags.bits.color;
-    current_block->flags.bits.color = RED;
+    set_color(x, get_color(current_block));
+    set_color(current_block, RED);
     return x;
 }
 
@@ -142,20 +213,20 @@ Block *rotateRight(Block *current_block) {
  * Used to balance the LLRB tree
  */
 void flipColors(Block *current_block) {
-    current_block->flags.bits.color = RED;
-    current_block->left_free->flags.bits.color = BLACK;
-    current_block->right_free->flags.bits.color = BLACK;
+    set_color(current_block, RED);
+    set_color(current_block->left_free, BLACK);
+    set_color(current_block->right_free, BLACK);
 }
 
 /*
  * Balance the LLRB tree
  */
 Block *balance(Block *current_block) {
-    if (current_block->right_free && current_block->right_free->flags.bits.color == RED)
+    if (current_block->right_free && get_color(current_block->right_free) == RED)
         current_block = rotateLeft(current_block);
-    if (current_block->left_free && current_block->left_free->flags.bits.color == RED && current_block->left_free->left_free && current_block->left_free->left_free->flags.bits.color == RED)
+    if (current_block->left_free && get_color(current_block->left_free) == RED && current_block->left_free->left_free && get_color(current_block->left_free->left_free) == RED)
         current_block = rotateRight(current_block);
-    if (current_block->left_free && current_block->right_free && current_block->left_free->flags.bits.color == RED && current_block->right_free->flags.bits.color == RED)
+    if (current_block->left_free && current_block->right_free && get_color(current_block->left_free) == RED && get_color(current_block->right_free) == RED)
         flipColors(current_block);
     return current_block;
 }
@@ -245,7 +316,7 @@ void detach(Block **tree, Block *target) {
 
     target->left_free = NULL;
     target->right_free = NULL;
-    target->flags.bits.color = RED;
+    set_color(target, RED);
 
     if (*tree) {
         *tree = balance(*tree);
@@ -292,7 +363,7 @@ Block *merge_blocks(Arena *arena, Block *target, Block *source) {
     target->size += source->size + sizeof(Block);
     Block *block_after = next_block(arena, source);
     if (block_after) {
-        block_after->prev = target;
+        override_prev(block_after, target);
     }
     return target;
 }
@@ -302,7 +373,7 @@ Block *merge_blocks(Arena *arena, Block *target, Block *source) {
  * Create an empty block at the end of the given block
  * Sets up a new block with size 0 and adjusts pointers
  */
-static inline Block *create_empty_block(Arena *arena, Block *prev_block) {
+static inline Block *create_empty_block(Block *prev_block) {
     // prep data for new block
     Block *prev_tail = prev_block;
     void *new_chunk = (char *)block_data(prev_tail) + prev_tail->size;
@@ -310,12 +381,11 @@ static inline Block *create_empty_block(Arena *arena, Block *prev_block) {
     // create new block
     Block *block = (Block *)new_chunk;
     block->size = 0;
-    block->flags.bits.is_free = true;
     block->prev = NULL;
-    block->flags.bits.color = RED;
+    set_color(block, RED);
+    set_is_free(block, true);
     block->left_free = NULL;
     block->right_free = NULL;
-    block->arena = arena;
 
     return block;
 }
@@ -330,13 +400,15 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
     Block *block = arena->tail;
     // update block
     block->size = size;
-    block->flags.bits.is_free = false;
+    set_is_free(block, false);
     arena->free_size_in_tail -= size;
+    block->arena = arena;
+    block->magic = (void*)0xDEADBEEF;
 
     // create new block
     if (arena->free_size_in_tail >= sizeof(Block)) {
-        Block *new_block = create_empty_block(arena, arena->tail);
-        new_block->prev = block;
+        Block *new_block = create_empty_block(arena->tail);
+        override_prev(new_block, block);
         // update arena
         arena->tail = new_block;
         arena->free_size_in_tail -= sizeof(Block);
@@ -346,35 +418,36 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
         arena->free_size_in_tail = 0;
     }
 
-    block->arena = arena;
     // return allocated data pointer
     return block_data(block);
 }
 
 /*
  * Allocate memory from the free blocks
- * Updates the free blocks list and creates a new block if there is enough space
+ * Updates the free blocks tree and creates a new block if there is enough space
  */
 static void *alloc_in_free_blocks(Arena *arena, size_t size) {
     Block *best = bestFit(arena->free_blocks, size);
 
     if (best) {
         detach(&arena->free_blocks, best);
-        best->flags.bits.is_free = false;
+        set_is_free(best, false);
+        best->arena = arena;
+        best->magic = (void*)0xDEADBEEF;
         if (best->size >= size + sizeof(Block) + MIN_BUFFER_SIZE) {
             Block *block_after = next_block(arena, best);
             size_t new_block_size = best->size - size - sizeof(Block);
             best->size = size;
-            best->flags.bits.is_free = false;
+            set_is_free(best, false);
 
-            Block *new_block = create_empty_block(arena, best);
+            Block *new_block = create_empty_block(best);
             new_block->size = new_block_size;
-            new_block->flags.bits.is_free = true;
+            set_is_free(new_block, true);
 
             if (block_after) {
-                block_after->prev = new_block;
+                override_prev(block_after, new_block);
             }
-            new_block->prev = best;
+            override_prev(new_block, best);
             arena->free_blocks = insert(arena->free_blocks, new_block);
         }
         
@@ -410,12 +483,12 @@ void *arena_alloc(Arena *arena, size_t size) {
  */
 static void arena_free_block_full(Arena *arena, void *data) {
     Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
-    block->flags.bits.is_free = true;
+    set_is_free(block, true);
     block->left_free = NULL;
     block->right_free = NULL;
-    block->flags.bits.color = RED;
+    set_color(block, RED);
 
-    Block *prev = block->prev;
+    Block *prev = get_pointer(block->prev);
     Block *next = next_block(arena, block);
 
     Block* result = NULL;
@@ -425,7 +498,7 @@ static void arena_free_block_full(Arena *arena, void *data) {
         arena->tail = block;
         block->size = 0;
     }
-    else if (next->flags.bits.is_free) {
+    else if (get_is_free(next)) {
         if (next == arena->tail) {
             make_tail(arena, block);
         }
@@ -439,7 +512,7 @@ static void arena_free_block_full(Arena *arena, void *data) {
         result = block;
     }
 
-    if (prev && prev->flags.bits.is_free) {
+    if (prev && get_is_free(prev)) {
         detach(&arena->free_blocks, prev);
         if (block == arena->tail) {
             make_tail(arena, prev);
@@ -465,12 +538,8 @@ void arena_free_block(void *data) {
     
     Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
     
-    // Magic number validation: BlockFlags has 6 bits of padding that are always 0
-    // The probability of random memory having exactly these 6 bits as 0 is very low
-    // This helps detect invalid/corrupted pointers
-    char flags_byte = block->flags.raw;
-    if (flags_byte & ~0x3) {  // ~0x3 = 11111100 - check that padding bits are 0
-        return; 
+    if (block->magic != (void*)0xDEADBEEF) {
+        return;
     }
 
     Arena *arena = block->arena;
@@ -490,15 +559,15 @@ Arena *arena_new_static(void *memory, ssize_t size) {
     Arena *arena = (Arena *)memory;
     arena->capacity = (size_t)size - sizeof(Arena);
     arena->data = (char *)memory + sizeof(Arena);
+    arena->free_blocks = NULL;
     
     Block *block = (Block *)arena->data;
     block->size = 0;
-    block->flags.bits.is_free = true;
-    block->flags.bits.color = RED;
     block->prev = NULL;
+    set_is_free(block, true);
+    set_is_free(block, RED);
     block->left_free = NULL;
     block->right_free = NULL;
-    block->arena = arena;
 
     arena->tail = block;
     arena->free_size_in_tail = arena->capacity - sizeof(Block);
@@ -532,8 +601,8 @@ void arena_reset(Arena *arena) {
     if (!arena) return;
     Block *block = (Block *)arena->data;
     block->size = 0;
-    block->flags.bits.is_free = true;
     block->prev = NULL;
+    set_is_free(block, true);
 
     arena->tail = block;
     arena->free_blocks = NULL;
@@ -567,7 +636,7 @@ void print_llrb_tree(Block *node, int depth) {
     printf("Block: %p, Size: %lu %i\n",
         node, 
         node->size,
-        node->flags.bits.color);
+        get_color(node));
     
     // Print left subtree
     print_llrb_tree(node->left_free, depth + 1);
@@ -602,12 +671,12 @@ void print_arena(Arena *arena) {
         printf("  Block: %p\n", block);
         printf("  Block Full Size: %lu\n", block->size + sizeof(Block));
         printf("  Block Data Size: %lu\n", block->size);
-        printf("  Is Free: %d\n", block->flags.bits.is_free);
+        printf("  Is Free: %d\n", get_is_free(block));
         printf("  Data Pointer: %p\n", block_data(block));
         printf("  Arena: %p\n", block->arena);
         printf("  Next: %p\n", next_block(arena, block));
-        printf("  Prev: %p\n", block->prev);
-        printf("  Color: %s\n", block->flags.bits.color ? "RED" : "BLACK");
+        printf("  Prev: %p\n", get_pointer(block->prev));
+        printf("  Color: %s\n", get_color(block) ? "RED" : "BLACK");
         printf("  Left Free: %p\n", block->left_free);
         printf("  Right Free: %p\n", block->right_free);
         printf("\n");
@@ -708,7 +777,7 @@ void print_fancy(Arena *arena, size_t bar_size) {
                 size_t overlap = overlap_end - overlap_start;
                 if (overlap > max_overlap) {
                     max_overlap = overlap;
-                    segment_type = current->flags.bits.is_free ? ' ' : '#'; // Free or occupied block
+                    segment_type = get_is_free(current) ? ' ' : '#'; // Free or occupied block
                 }
             }
             
