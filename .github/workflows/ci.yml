@@ -132,7 +132,7 @@ jobs:
 
   # Job 4: Build and test on strict ARM64 (aarch64) - unaligned access will CRASH
   build-and-test-arm64-strict:
-    name: Ubuntu | ARM64 (Strict Alignment) | GCC
+    name: Ubuntu | ARM64 (Strict Alignment via GDB) | GCC
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -141,16 +141,25 @@ jobs:
         uses: docker/setup-qemu-action@v3
       - name: Build and Test in Strict ARM64 Docker container
         run: |
-          # The --privileged flag is required to modify kernel parameters
-          docker run --rm --privileged --platform linux/arm64 -v ${{ github.workspace }}:/workspace -w /workspace arm64v8/ubuntu:latest \
+          docker run --rm --platform linux/arm64 -v ${{ github.workspace }}:/workspace -w /workspace arm64v8/ubuntu:latest \
           sh -c " \
-            echo '--- Enabling strict alignment fault checking ---' && \
-            echo 2 > /proc/cpu/alignment && \
-            \
-            echo '--- Installing dependencies ---' && \
+            echo '--- Installing dependencies (including GDB) ---' && \
             apt-get update && \
-            apt-get install -y build-essential gcc make && \
+            apt-get install -y build-essential gcc make gdb && \
             \
-            echo '--- Building and running tests (expecting failure if unaligned) ---' && \
-            make tests CC=gcc \
+            echo '--- Building tests ---' && \
+            make tests CC=gcc && \
+            \
+            echo '--- Running tests under GDB to catch alignment faults ---' && \
+            for test_exe in tests/*_silent; do \
+              echo \"--- Running \$test_exe ---\"; \
+              gdb -nx --batch \
+                -ex 'handle SIGBUS stop print nostack' \
+                -ex 'run' \
+                -ex 'if \$_exitcode != 0' \
+                -ex '  quit 1' \
+                -ex 'end' \
+                -ex 'quit 0' \
+                --args \"\$test_exe\"; \
+            done \
           "

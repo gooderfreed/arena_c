@@ -6,9 +6,8 @@
 
 #include <limits.h> // This is guaranteed to exist by the C standard
 
-// Define a portable SSIZE_MAX if it doesn't exist
 #ifndef SSIZE_MAX
-#define SSIZE_MAX ((ssize_t)(((size_t)-1) >> 1))
+#define SSIZE_MAX (SIZE_MAX / 2)
 #endif
 
 void test_invalid_allocations(void) {
