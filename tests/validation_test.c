@@ -71,6 +71,7 @@ void test_invalid_arena_creation(void) {
     ASSERT(negative_size_arena == NULL, "Negative size arena creation should fail");
 
     TEST_PHASE("Very large size arena");
+    printf("SSIZE_MAX: %zu\n", SSIZE_MAX);
     Arena *large_size_arena = arena_new_dynamic(SSIZE_MAX);
     ASSERT(large_size_arena == NULL, "Very large size arena creation should fail");
 

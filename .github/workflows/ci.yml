@@ -147,19 +147,20 @@ jobs:
             apt-get update && \
             apt-get install -y build-essential gcc make gdb && \
             \
-            echo '--- Building tests ---' && \
-            make tests CC=gcc && \
+            echo '--- Building tests (with debug symbols for GDB) ---' && \
+            make tests CC=\"gcc -g\" && \
             \
             echo '--- Running tests under GDB to catch alignment faults ---' && \
             for test_exe in tests/*_silent; do \
               echo \"--- Running \$test_exe ---\"; \
               gdb -nx --batch \
-                -ex 'handle SIGBUS stop print nostack' \
+                -ex 'handle SIGBUS stop print' \
                 -ex 'run' \
                 -ex 'if \$_exitcode != 0' \
-                -ex '  quit 1' \
+                -ex '  quit \$_exitcode' \
+                -ex 'else' \
+                -ex '  quit 0' \
                 -ex 'end' \
-                -ex 'quit 0' \
                 --args \"\$test_exe\"; \
             done \
           "
