@@ -29,7 +29,7 @@ void test_invalid_allocations(void) {
 
     TEST_PHASE("Free invalid pointer");
     Block fake_block = {0};
-    fake_block.magic = 0xFF; // 0xFF is an invalid magic number
+    fake_block.magic = (void *)0xFF; // 0xFF is an invalid magic number
     void *fake_data = (char*)&fake_block + sizeof(Block);
     arena_free_block(fake_data); // Should not crash
     ASSERT(true, "Free invalid pointer should not crash");

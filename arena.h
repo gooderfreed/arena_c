@@ -5,8 +5,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#ifdef _win32
+#ifdef _WIN32
 #include 
+#include <BaseTsd.h> // SSIZE_T
 #define ssize_t SSIZE_T
 #else
 #include <sys/types.h>  // for ssize_t
@@ -70,7 +71,7 @@ struct Arena {
 Arena *arena_new_dynamic(ssize_t size);
 Arena *arena_new_static(void *memory, ssize_t size);
 void arena_reset(Arena *arena);
-void *arena_alloc(Arena *arena, size_t size);
+void *arena_alloc(Arena *arena, ssize_t size);
 void arena_free_block(void *data);
 void arena_free(Arena *arena);
 
@@ -406,7 +407,7 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
     block->magic = (void*)0xDEADBEEF;
 
     // create new block
-    if (arena->free_size_in_tail >= sizeof(Block)) {
+    if (arena->free_size_in_tail >= sizeof(Block) + MIN_BUFFER_SIZE) {
         Block *new_block = create_empty_block(arena->tail);
         override_prev(new_block, block);
         // update arena
@@ -462,15 +463,15 @@ static void *alloc_in_free_blocks(Arena *arena, size_t size) {
  * Tries to allocate memory in the tail or from free blocks
  * Returns NULL if there is not enough space
  */
-void *arena_alloc(Arena *arena, size_t size) {
-    if (size == 0 || arena == NULL || size > arena->capacity) return NULL;
+void *arena_alloc(Arena *arena, ssize_t size) {
+    if (size <= 0 || arena == NULL || (size_t)size > arena->capacity) return NULL;
     // check if there is enough space in the free blocks
-    void *result = alloc_in_free_blocks(arena, size);
+    void *result = alloc_in_free_blocks(arena, (size_t)size);
     if (result) return result;
 
     // check if area has enough space in the end
-    if (arena->free_size_in_tail >= size) {
-        return alloc_in_tail(arena, size);
+    if (arena->free_size_in_tail >= (size_t)size) {
+        return alloc_in_tail(arena, (ssize_t)size);
     }
 
     return NULL;
