@@ -4,6 +4,13 @@
 #include <limits.h>
 #include <stdint.h>
 
+#include <limits.h> // This is guaranteed to exist by the C standard
+
+// Define a portable SSIZE_MAX if it doesn't exist
+#ifndef SSIZE_MAX
+#define SSIZE_MAX ((ssize_t)(((size_t)-1) >> 1))
+#endif
+
 void test_invalid_allocations(void) {
     TEST_CASE("Invalid Allocation Scenarios");
 
@@ -65,7 +72,7 @@ void test_invalid_arena_creation(void) {
     ASSERT(negative_size_arena == NULL, "Negative size arena creation should fail");
 
     TEST_PHASE("Very large size arena");
-    Arena *large_size_arena = arena_new_dynamic(INT64_MAX);
+    Arena *large_size_arena = arena_new_dynamic(SSIZE_MAX);
     ASSERT(large_size_arena == NULL, "Very large size arena creation should fail");
 
     TEST_PHASE("NULL memory for static arena");
