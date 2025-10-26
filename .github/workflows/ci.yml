@@ -2,15 +2,14 @@ name: C Project CI
 
 on:
   push:
-    branches: [ "main", "master" ] # Or your default branch
+    branches: [ "main", "master" ]
     paths:
-      # Trigger only if files *within* the repo change
       - 'arena.h'
       - 'Makefile'
       - 'tests/**'
       - '.github/workflows/ci.yml'
   pull_request:
-    branches: [ "main", "master" ] # Or your default branch
+    branches: [ "main", "master" ]
     paths:
       - 'arena.h'
       - 'Makefile'
@@ -19,37 +18,87 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest # Use the latest Ubuntu runner
+    name: Build on ${{ matrix.os }} with ${{ matrix.compiler }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        compiler: [gcc, clang]
+        exclude:
+          - os: windows-latest
+            compiler: clang
+          - os: macos-latest
+            compiler: gcc
+
+    runs-on: ${{ matrix.os }}
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # Checkout repository code (will be in the root, i.e., arena_c)
+      uses: actions/checkout@v4
 
-    - name: Set up build environment
+    # --- Linux and macOS Steps ---
+    - name: Set up build environment (Linux)
+      if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential valgrind # Install compiler (gcc) and valgrind
+        sudo apt-get install -y build-essential valgrind ${{ matrix.compiler }}
 
-    - name: Build and Run Tests
-      # Makefile is in the root, so no working-directory needed
-      run: make tests
+    - name: Build and Test (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: make tests CC=${{ matrix.compiler }}
 
+    # --- Windows Steps (Dual-Strategy) ---
+
+    # 1. Primary Test: GCC with Makefile via MSYS2
+    - name: Set up MSYS2 and GCC (for Makefile build)
+      if: runner.os == 'Windows'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: mingw-w64-x86_64-toolchain make
+
+    - name: Build and Test with GCC/Makefile (Windows)
+      if: runner.os == 'Windows'
+      shell: msys2 {0}
+      run: make tests CC=gcc
+
+    # 2. Secondary Test: Native MSVC Smoke Test (Corrected for multiple files)
+    - name: Build and Test each test file with MSVC (Native)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        
+        cd tests
+        
+        REM Loop through all C files in the tests directory
+        FOR %%f IN (*.c) DO (
+          echo.
+          echo --- Compiling %%f with MSVC ---
+          REM /I.. tells the compiler to look for headers (arena.h) in the parent directory
+          REM /Fe:%%~nf.exe names the output executable based on the C file name
+          cl.exe /W4 /I.. /Fe:%%~nf.exe %%f
+          
+          echo --- Running %%~nf.exe ---
+          call %%~nf.exe
+        )
+
+    # --- Valgrind and Codecov (Linux Only) ---
     - name: Run Valgrind Memory Check
-      # Makefile is in the root, so no working-directory needed
-      run: make valgrind
+      if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+      run: make valgrind CC=gcc
 
-    - name: Build and Run Tests (for Coverage)
-      # This target generates .gcda/.gcno files in tests/
-      run: make coverage
+    - name: Build for Coverage
+      if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+      run: make coverage CC=gcc
 
-    - name: Upload coverage reports to Codecov
+    - name: Upload coverage to Codecov
+      if: runner.os == 'Linux' && matrix.compiler == 'gcc'
       uses: codecov/codecov-action@v4
       with:
-        # CODECOV_TOKEN is stored in GitHub secrets
         token: ${{ secrets.CODECOV_TOKEN }}
-        # Specify the path to the configuration file
         config_file: ./.github/codecov.yml
-        # Optional: fail CI if Codecov upload fails
         fail_ci_if_error: true
-        # Verbose output from the action
-        verbose: true 
+        verbose: true

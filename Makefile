@@ -1,6 +1,6 @@
 # Makefile for compiling and running arena allocator tests
 
-CC = gcc
+CC ?= clang
 CFLAGS = -Wall -Wextra -std=c99 -g -I.
 DEBUG_FLAGS = -DDEBUG
 COV_FLAGS = -fprofile-arcs -ftest-coverage # Coverage flags

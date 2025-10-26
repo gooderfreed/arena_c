@@ -471,7 +471,7 @@ void *arena_alloc(Arena *arena, ssize_t size) {
 
     // check if area has enough space in the end
     if (arena->free_size_in_tail >= (size_t)size) {
-        return alloc_in_tail(arena, (ssize_t)size);
+        return alloc_in_tail(arena, (size_t)size);
     }
 
     return NULL;
