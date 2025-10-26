@@ -107,10 +107,34 @@ jobs:
       - name: Set up 32-bit build environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-multilib
-      - name: Build and Test in 32-bit mode
-        # Pass -m32 flag to GCC to force 32-bit compilation
-        run: make tests CC="gcc -m32"
+          sudo apt-get install -y gcc-multilib gdb
+      - name: Build and Test in 32-bit mode under GDB
+        run: |
+          # Build tests with debug symbols
+          make tests CC="gcc -m32 -g"
+          
+          # Run the failing test under GDB to get a backtrace
+          echo "--- Running stress_test_silent under GDB ---"
+          gdb -nx --batch \
+            -ex 'run' \
+            -ex 'bt' \
+            -ex 'quit' \
+            --args tests/stress_test_silent
+
+  # # Job 2: Build and test for 32-bit architecture (i686)
+  # build-and-test-32bit:
+  #   name: Ubuntu | x86_32 | GCC
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Set up 32-bit build environment
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y gcc-multilib
+  #     - name: Build and Test in 32-bit mode
+  #       # Pass -m32 flag to GCC to force 32-bit compilation
+  #       run: make tests CC="gcc -m32"
 
   # Job 3: Build and test on modern ARM64 (aarch64) - forgiving alignment
   build-and-test-arm64-modern:
@@ -132,7 +156,7 @@ jobs:
 
   # Job 4: Build and test on strict ARM64 (aarch64) - unaligned access will CRASH
   build-and-test-arm64-strict:
-    name: Ubuntu | ARM64 (Strict Alignment via GDB) | GCC
+    name: Ubuntu | ARM64 (Strict Alignment via UBSan) | GCC
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -143,23 +167,10 @@ jobs:
         run: |
           docker run --rm --platform linux/arm64 -v ${{ github.workspace }}:/workspace -w /workspace arm64v8/ubuntu:latest \
           sh -c " \
-            echo '--- Installing dependencies (including GDB) ---' && \
+            echo '--- Installing dependencies ---' && \
             apt-get update && \
-            apt-get install -y build-essential gcc make gdb && \
+            apt-get install -y build-essential gcc make && \
             \
-            echo '--- Building tests (with debug symbols) ---' && \
-            make tests CC='gcc -g' && \
-            \
-            echo '--- Running tests under GDB to catch alignment faults ---' && \
-            for test_exe in tests/*_silent; do \
-              echo \"--- Running \$test_exe ---\"; \
-              gdb -nx --batch \
-                -ex 'set confirm off' \
-                -ex 'set pagination off' \
-                -ex 'handle SIGBUS stop print' \
-                -ex 'run' \
-                -ex 'bt' \
-                -ex 'quit' \
-                --args \"\$test_exe\"; \
-            done \
+            echo '--- Building and running tests with UBSan for alignment ---' && \
+            make tests CC='gcc -g -fsanitize=alignment' \
           "
