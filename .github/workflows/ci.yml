@@ -1,4 +1,4 @@
-name: C Project CI
+name: Arena CI
 
 on:
   push:
@@ -17,9 +17,9 @@ on:
       - '.github/workflows/ci.yml'
 
 jobs:
-  build-and-test:
-    name: Build on ${{ matrix.os }} with ${{ matrix.compiler }}
-    
+  # Job 1: Build and test on primary x86_64 platforms
+  build-and-test-x86_64:
+    name: ${{ matrix.os }} | x86_64 | ${{ matrix.compiler }}
     strategy:
       fail-fast: false
       matrix:
@@ -32,73 +32,100 @@ jobs:
             compiler: gcc
 
     runs-on: ${{ matrix.os }}
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # --- Linux and macOS Steps ---
-    - name: Set up build environment (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential valgrind ${{ matrix.compiler }}
+      # Linux Setup
+      - name: Set up build environment (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential valgrind ${{ matrix.compiler }}
 
-    - name: Build and Test (Linux/macOS)
-      if: runner.os != 'Windows'
-      run: make tests CC=${{ matrix.compiler }}
+      # macOS Setup (uses pre-installed tools)
+      - name: Set up build environment (macOS)
+        if: runner.os == 'macOS'
+        run: echo "Using pre-installed Clang on macOS."
 
-    # --- Windows Steps (Dual-Strategy) ---
+      # Windows Setup (GCC via MSYS2)
+      - name: Set up MSYS2 and GCC (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-toolchain make
 
-    # 1. Primary Test: GCC with Makefile via MSYS2
-    - name: Set up MSYS2 and GCC (for Makefile build)
-      if: runner.os == 'Windows'
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        install: mingw-w64-x86_64-toolchain make
+      # Build & Test Steps
+      - name: Build and Test with Makefile
+        if: runner.os != 'Windows'
+        run: make tests CC=${{ matrix.compiler }}
 
-    - name: Build and Test with GCC/Makefile (Windows)
-      if: runner.os == 'Windows'
-      shell: msys2 {0}
-      run: make tests CC=gcc
+      - name: Build and Test with Makefile (Windows/GCC)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: make tests CC=gcc
 
-    # 2. Secondary Test: Native MSVC Smoke Test (Corrected for multiple files)
-    - name: Build and Test each test file with MSVC (Native)
-      if: runner.os == 'Windows'
-      shell: cmd
-      run: |
-        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        
-        cd tests
-        
-        REM Loop through all C files in the tests directory
-        FOR %%f IN (*.c) DO (
-          echo.
-          echo --- Compiling %%f with MSVC ---
-          REM /I.. tells the compiler to look for headers (arena.h) in the parent directory
-          REM /Fe:%%~nf.exe names the output executable based on the C file name
-          cl.exe /W4 /I.. /Fe:%%~nf.exe %%f
-          
-          echo --- Running %%~nf.exe ---
-          call %%~nf.exe
-        )
+      # MSVC Smoke Test (Windows Only)
+      - name: Build and Test each test file with MSVC
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cd tests
+          FOR %%f IN (*.c) DO (
+            echo --- Compiling %%f with MSVC ---
+            cl.exe /W4 /I.. /Fe:%%~nf.exe %%f
+            echo --- Running %%~nf.exe ---
+            call %%~nf.exe
+          )
 
-    # --- Valgrind and Codecov (Linux Only) ---
-    - name: Run Valgrind Memory Check
-      if: runner.os == 'Linux' && matrix.compiler == 'gcc'
-      run: make valgrind CC=gcc
+      # Valgrind & Codecov (Linux/GCC Only)
+      - name: Run Valgrind Memory Check
+        if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+        run: make valgrind CC=gcc
 
-    - name: Build for Coverage
-      if: runner.os == 'Linux' && matrix.compiler == 'gcc'
-      run: make coverage CC=gcc
+      - name: Build for Coverage
+        if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+        run: make coverage CC=gcc
 
-    - name: Upload coverage to Codecov
-      if: runner.os == 'Linux' && matrix.compiler == 'gcc'
-      uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        config_file: ./.github/codecov.yml
-        fail_ci_if_error: true
-        verbose: true
+      - name: Upload coverage to Codecov
+        if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          config_file: ./.github/codecov.yml
+          fail_ci_if_error: true
+          verbose: true
+
+  # Job 2: Build and test for 32-bit architecture (i686)
+  build-and-test-32bit:
+    name: Ubuntu | x86_32 | GCC
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up 32-bit build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib
+      - name: Build and Test in 32-bit mode
+        # Pass -m32 flag to GCC to force 32-bit compilation
+        run: make tests CC="gcc -m32"
+
+  # Job 3: Build and test for ARM64 architecture (aarch64)
+  build-and-test-arm64:
+    name: Ubuntu | ARM64 (emulated) | GCC
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up QEMU for ARM emulation
+        uses: docker/setup-qemu-action@v3
+      - name: Build and Test in ARM64 Docker container
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/workspace -w /workspace arm64v8/ubuntu:latest \
+          sh -c " \
+            apt-get update && \
+            apt-get install -y build-essential gcc make && \
+            make tests CC=gcc \
+          "
