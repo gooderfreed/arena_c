@@ -71,10 +71,13 @@ void test_invalid_arena_creation(void) {
     ASSERT(negative_size_arena == NULL, "Negative size arena creation should fail");
 
     TEST_PHASE("Very large size arena");
-    printf("SSIZE_MAX: %zu\n", SSIZE_MAX);
-    Arena *large_size_arena = arena_new_dynamic(SSIZE_MAX);
-    ASSERT(large_size_arena == NULL, "Very large size arena creation should fail");
-
+    #if SIZE_MAX > 0xFFFFFFFF
+        Arena *large_size_arena = arena_new_dynamic(SSIZE_MAX);
+        ASSERT(large_size_arena == NULL, "Very large size arena creation should fail on 64-bit systems");
+    #else
+        printf("[INFO] Skipping SSIZE_MAX allocation test on 32-bit system.\n");
+    #endif
+    
     TEST_PHASE("NULL memory for static arena");
     Arena *null_memory_arena = arena_new_static(NULL, 1024);
     ASSERT(null_memory_arena == NULL, "Static arena with NULL memory should fail");
