@@ -6,7 +6,6 @@
 #include <stdint.h>
 
 #ifdef _WIN32
-#include 
 #include <BaseTsd.h> // SSIZE_T
 #define ssize_t SSIZE_T
 #else
