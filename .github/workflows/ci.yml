@@ -121,21 +121,6 @@ jobs:
             -ex 'quit' \
             --args tests/stress_test_silent
 
-  # # Job 2: Build and test for 32-bit architecture (i686)
-  # build-and-test-32bit:
-  #   name: Ubuntu | x86_32 | GCC
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
-  #     - name: Set up 32-bit build environment
-  #       run: |
-  #         sudo apt-get update
-  #         sudo apt-get install -y gcc-multilib
-  #     - name: Build and Test in 32-bit mode
-  #       # Pass -m32 flag to GCC to force 32-bit compilation
-  #       run: make tests CC="gcc -m32"
-
   # Job 3: Build and test on modern ARM64 (aarch64) - forgiving alignment
   build-and-test-arm64-modern:
     name: Ubuntu | ARM64 (Modern, Forgiving Alignment) | GCC
@@ -165,12 +150,16 @@ jobs:
         uses: docker/setup-qemu-action@v3
       - name: Build and Test in Strict ARM64 Docker container
         run: |
-          docker run --rm --platform linux/arm64 -v ${{ github.workspace }}:/workspace -w /workspace arm64v8/ubuntu:latest \
-          sh -c " \
-            echo '--- Installing dependencies ---' && \
-            apt-get update && \
-            apt-get install -y build-essential gcc make && \
-            \
-            echo '--- Building and running tests with UBSan for alignment ---' && \
-            make tests CC='gcc -g -fsanitize=alignment' \
-          "
+          docker run --rm --platform linux/arm64 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            --env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+            arm64v8/ubuntu:latest \
+            sh -c " \
+              echo '--- Installing dependencies ---' && \
+              apt-get update -y && \
+              apt-get install -y build-essential gcc make && \
+              \
+              echo '--- Building and running tests with UBSan for alignment ---' && \
+              make tests_full CC='gcc -g -fsanitize=alignment' \
+            "

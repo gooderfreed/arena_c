@@ -280,8 +280,8 @@ void test_block_merging(void) {
     Arena *arena = arena_new_dynamic(ARENA_SIZE/10);
     ASSERT(arena != NULL, "Arena creation should succeed");
 
-    // Allocate three blocks of 1KB each
-    size_t block_size = 100;
+    // Allocate three blocks of 128 bytes each
+    size_t block_size = 128;
     void *block1 = arena_alloc(arena, block_size);
     void *block2 = arena_alloc(arena, block_size);
     void *block3 = arena_alloc(arena, block_size);
@@ -380,7 +380,8 @@ void test_llrb_detach_scenarios(void) {
     print_fancy(arena_root, 100);
     #endif // DEBUG
     ASSERT(arena_root->free_blocks != NULL, "[Detach Root] Free list should contain block A");
-    ASSERT(arena_root->free_blocks->size == 100, "[Detach Root] Root of free list should be block A");
+    printf("%zu\n", arena_root->free_blocks->size);
+    ASSERT(arena_root->free_blocks->size == 112, "[Detach Root] Root of free list should be block A");
 
     // Allocate the same size again (100). This should find block A and detach it.
     void *ptr_c_root = arena_alloc(arena_root, 100);

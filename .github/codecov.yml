@@ -16,4 +16,4 @@ coverage:
         # Target coverage for the changes in a PR
         target: 80%
         # Do not allow coverage to decrease in PRs
-        threshold: 0% 
+        # threshold: 0% 

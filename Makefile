@@ -2,7 +2,7 @@
 
 CC ?= clang
 CFLAGS = -Wall -Wextra -std=c99 -g -I.
-DEBUG_FLAGS = -DDEBUG
+DEBUG_FLAGS = -DDEBUG # Debug flag
 COV_FLAGS = -fprofile-arcs -ftest-coverage # Coverage flags
 LDFLAGS_COV = -lgcov # Linker flag for coverage
 

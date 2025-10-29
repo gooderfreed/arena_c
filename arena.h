@@ -17,26 +17,31 @@
     #define MIN_BUFFER_SIZE 16
 #endif
 
-#define FLAG_IS_FREE ((uintptr_t)1)
-#define FLAG_COLOR   ((uintptr_t)2)
-#define POINTER_MASK (~(uintptr_t)7)
+#define DEFAULT_ALIGNMENT 16 // Default memory alignment
+
+#define FLAG_IS_FREE ((uintptr_t)1)    // Flag to indicate if a block is free
+#define FLAG_COLOR   ((uintptr_t)2)    // Flag to indicate the color of a block in LLRB tree
+#define POINTER_MASK (~(uintptr_t)3)   // Mask to extract the pointer without flags
+
+#define ARENA_IS_DYNAMIC ((uintptr_t)1) // Flag to indicate if the arena is dynamic
 
 #define RED false
 #define BLACK true
 
 #define block_data(block) ((void *)((char *)(block) + sizeof(Block)))
 
-// Structure type declarations for memory management.
+// Structure type declarations for memory management
 typedef struct Block Block;
 typedef struct Arena Arena;
+typedef struct Bump  Bump;
 
 /*
- * Memory block structure.
- * Represents a chunk of memory and metadata for its management within the arena.
+ * Memory block structure
+ * Represents a chunk of memory and metadata for its management within the arena
  */
 struct Block {
     size_t size;          // Size of the data block.
-    Block *prev;          // Pointer to the previous block in the global list also stores flags via pointer tagging.
+    Block *prev;          // Pointer to the previous block in the global list, also stores flags via pointer tagging.
 
     union {
         struct {
@@ -44,26 +49,36 @@ struct Block {
             Block *right_free;    // Right child in red-black tree
         };
         struct {
-            Arena *arena;         // Pointer to the arena that allocated this block.
+            Arena *arena;         // Pointer to the arena that allocated this block
             void  *magic;         // Magic number for validation random pointer
         };
     };
 };
 
+
+struct Bump {
+    union {
+        Block *block_representation; // Block representation for compatibility
+        struct {
+            size_t capacity;         // Total capacity of the bump allocator
+            Block *prev;             // Pointer to the previous block in the global list, need for compatibility with block struct layout
+            Arena *arena;            // Pointer to the arena that allocated this block
+            size_t offset;           // Current offset for allocations within the bump allocator
+        };
+    };
+};
+
 /*
- * Memory arena structure.
- * Manages a pool of memory, block allocation, and block states.
+ * Memory arena structure
+ * Manages a pool of memory, block allocation, and block states
  */
 struct Arena {
-    size_t capacity;                     // Total capacity of the arena.
-    void *data;                          // Pointer to the start of the memory managed by the arena.
+    size_t capacity;                     // Total capacity of the arena
 
-    bool is_dynamic;                     // Flag indicating if the arena uses dynamic allocation.
+    Block *tail;                         // Pointer to the last block in the global list, also stores is_dynamic flag via pointer tagging
+    Block *free_blocks;                  // Pointer to the tree of free blocks
 
-    Block *tail;                         // Pointer to the last block in the global list.
-    Block *free_blocks;                  // Pointer to the list of free blocks (становится корнем RB-дерева).
-
-    size_t free_size_in_tail;            // Free space available in the tail block.
+    size_t free_size_in_tail;            // Free space available in the tail block
 };
 
 
@@ -73,6 +88,14 @@ void arena_reset(Arena *arena);
 void *arena_alloc(Arena *arena, ssize_t size);
 void arena_free_block(void *data);
 void arena_free(Arena *arena);
+
+Arena *arena_new_nested(Arena *parent_arena, ssize_t size);
+void  arena_free_nested(Arena *nested_arena);
+
+Bump  *bump_new(Arena *parent_arena, ssize_t size);
+void  *bump_alloc(Bump *bump, ssize_t size);
+void  bump_reset(Bump *bump);
+void  bump_free(Bump *bump);
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -109,6 +132,14 @@ static inline bool get_color(Block *ptr) {
 }
 
 /*
+ * Get is arena dynamic
+ * Retrieves the is_dynamic flag of the arena pointer
+ */
+static inline bool get_is_arena_dynamic(Arena *arena) {
+    return ((uintptr_t)arena->tail & ARENA_IS_DYNAMIC);
+}
+
+/*
  * Set is free
  * Updates the is_free flag of the block pointer
  */
@@ -139,6 +170,21 @@ static inline void set_color(Block *ptr, bool color) {
 }
 
 /*
+ * Set is arena dynamic
+ * Updates the is_dynamic flag of the arena pointer
+ */
+static inline void set_is_arena_dynamic(Arena *arena, bool is_dynamic) {
+    uintptr_t int_ptr = (uintptr_t)(arena->tail);
+    if (is_dynamic) {
+        int_ptr |= ARENA_IS_DYNAMIC;
+    }
+    else {
+        int_ptr &= ~ARENA_IS_DYNAMIC;
+    }
+    arena->tail = (Block *)int_ptr;
+}
+
+/*
  * Override address
  * Combines the address of the target with the flags of the source
  */
@@ -155,18 +201,34 @@ static inline void override_prev(Block *block, Block *new) {
 }
 
 /*
+ * Override arena tail pointer
+ * Safely updates the arena's tail pointer while preserving flags
+ */
+static inline void override_arena_tail(Arena *arena, Block *new) {
+    arena->tail = override_address(arena->tail, new);
+}
+
+/*
+ * Align up
+ * Rounds up the given size to the nearest multiple of alignment
+ */
+static inline size_t align_up(size_t size, size_t alignment) {
+    return (size + alignment - 1) & ~(alignment - 1);
+}
+
+/*
  * Safe next block pointer
  * Checks if the next block exists and is not in the tail free space
  */
 static inline bool has_next_block(Arena *arena, Block *block) {
     // Calculate the offset of the next block (as a number, not a pointer)
-    size_t next_offset = (size_t)((char *)block - (char *)arena->data) + 
+    size_t next_offset = (size_t)((char *)block - (char *)arena + sizeof(Arena)) + 
                          sizeof(Block) + block->size;
     
     // Verify that the next block offset is within valid limits
     // And not in the tail free space
     return (next_offset < arena->capacity) && 
-           ((block != arena->tail) || (arena->free_size_in_tail == 0));
+           ((block != get_pointer(arena->tail)) || (arena->free_size_in_tail == 0));
 }
 
 /*
@@ -352,7 +414,7 @@ Block *bestFit(Block *root, size_t size) {
  */
 void make_tail(Arena *arena, Block *block) {
     arena->free_size_in_tail += block->size + sizeof(Block);
-    arena->tail = block;
+    override_arena_tail(arena, block);
     block->size = 0;
 }
 
@@ -397,7 +459,7 @@ static inline Block *create_empty_block(Block *prev_block) {
  */
 static void *alloc_in_tail(Arena *arena, size_t size) {
     // get a tail block
-    Block *block = arena->tail;
+    Block *block = get_pointer(arena->tail);
     // update block
     block->size = size;
     set_is_free(block, false);
@@ -407,10 +469,10 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
 
     // create new block
     if (arena->free_size_in_tail >= sizeof(Block) + MIN_BUFFER_SIZE) {
-        Block *new_block = create_empty_block(arena->tail);
+        Block *new_block = create_empty_block(block);
         override_prev(new_block, block);
         // update arena
-        arena->tail = new_block;
+        override_arena_tail(arena, new_block);
         arena->free_size_in_tail -= sizeof(Block);
     }
     else {
@@ -465,10 +527,15 @@ static void *alloc_in_free_blocks(Arena *arena, size_t size) {
 void *arena_alloc(Arena *arena, ssize_t size) {
     if (size <= 0 || arena == NULL || (size_t)size > arena->capacity) return NULL;
     // check if there is enough space in the free blocks
-    void *result = alloc_in_free_blocks(arena, (size_t)size);
+    void *result = alloc_in_free_blocks(arena, align_up((size_t)size, DEFAULT_ALIGNMENT));
     if (result) return result;
 
-    // check if area has enough space in the end
+    // check if arena has enough space in the end for aligned size
+    if (arena->free_size_in_tail >= align_up((size_t)size, DEFAULT_ALIGNMENT)) {
+        return alloc_in_tail(arena, align_up((size_t)size, DEFAULT_ALIGNMENT));
+    }
+
+    // check if arena has enough space in the literal end of memory (alignment for next allocation is not required)
     if (arena->free_size_in_tail >= (size_t)size) {
         return alloc_in_tail(arena, (size_t)size);
     }
@@ -495,11 +562,11 @@ static void arena_free_block_full(Arena *arena, void *data) {
 
     if (!next) {
         arena->free_size_in_tail += block->size;
-        arena->tail = block;
+        override_arena_tail(arena, block);
         block->size = 0;
     }
     else if (get_is_free(next)) {
-        if (next == arena->tail) {
+        if (next == get_pointer(arena->tail)) {
             make_tail(arena, block);
         }
         else {
@@ -514,7 +581,7 @@ static void arena_free_block_full(Arena *arena, void *data) {
 
     if (prev && get_is_free(prev)) {
         detach(&arena->free_blocks, prev);
-        if (block == arena->tail) {
+        if (block == get_pointer(arena->tail)) {
             make_tail(arena, prev);
         }
         else {
@@ -543,8 +610,8 @@ void arena_free_block(void *data) {
     }
 
     Arena *arena = block->arena;
-    if (!arena ||(char *)data < (char *)arena->data || (char *)data > (char *)arena->data + arena->capacity) return;
-    
+    if (!arena ||(char *)data < (char *)arena + sizeof(Arena) || (char *)data > (char *)arena + sizeof(Arena) + arena->capacity) return;
+
     arena_free_block_full(arena, data);
 }
 
@@ -554,14 +621,13 @@ void arena_free_block(void *data) {
  * Returns NULL if the provided size is too small, memory is NULL or size is negative
  */
 Arena *arena_new_static(void *memory, ssize_t size) {
-    if (!memory || size < 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
+    if (!memory || size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
 
     Arena *arena = (Arena *)memory;
     arena->capacity = (size_t)size - sizeof(Arena);
-    arena->data = (char *)memory + sizeof(Arena);
     arena->free_blocks = NULL;
     
-    Block *block = (Block *)arena->data;
+    Block *block = (Block *)((char *)memory + sizeof(Arena));
     block->size = 0;
     block->prev = NULL;
     set_is_free(block, true);
@@ -569,10 +635,10 @@ Arena *arena_new_static(void *memory, ssize_t size) {
     block->left_free = NULL;
     block->right_free = NULL;
 
-    arena->tail = block;
+    override_arena_tail(arena, block);
     arena->free_size_in_tail = arena->capacity - sizeof(Block);
 
-    arena->is_dynamic = false;
+    set_is_arena_dynamic(arena, false);
 
     return arena;
 }
@@ -583,12 +649,12 @@ Arena *arena_new_static(void *memory, ssize_t size) {
  * Returns NULL if the requested size is too small or size is negative
  */
 Arena *arena_new_dynamic(ssize_t size) {
-    if (size < 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
+    if (size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
     void *data = malloc((size_t)size);
     if (!data) return NULL;
     Arena *arena = arena_new_static(data, size);
 
-    arena->is_dynamic = true;
+    set_is_arena_dynamic(arena, true);
 
     return arena;
 }
@@ -599,12 +665,12 @@ Arena *arena_new_dynamic(ssize_t size) {
  */
 void arena_reset(Arena *arena) {
     if (!arena) return;
-    Block *block = (Block *)arena->data;
+    Block *block = (Block *)((char *)arena + sizeof(Arena));
     block->size = 0;
     block->prev = NULL;
     set_is_free(block, true);
 
-    arena->tail = block;
+    override_arena_tail(arena, block);
     arena->free_blocks = NULL;
     arena->free_size_in_tail = arena->capacity - sizeof(Block);
 }
@@ -615,12 +681,98 @@ void arena_reset(Arena *arena) {
  */
 void arena_free(Arena *arena) {
     if (!arena) return;
-    if (arena->is_dynamic) {
+    if (get_is_arena_dynamic(arena)) {
         free(arena);
     }
 }
 
+/*
+ * Create a nested arena
+ * Allocates memory for a nested arena from a parent arena and initializes it
+ * Returns NULL if the parent arena is NULL, requested size is too small, or allocation fails
+ */
+Arena *arena_new_nested(Arena *parent_arena, ssize_t size) {
+    if (!parent_arena) return NULL;
+    if (size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
+    void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
+    if (!data) return NULL;
+    Arena *arena = arena_new_static(data, size);  // Initialize the nested arena in the allocated memory
+    if (!arena) {
+        arena_free_block(data);   // Free the allocated memory if arena initialization fails (should not happen because size is already checked)
+        return NULL;
+    }
+    return arena;
+}
+
+/*
+ * Free a nested arena
+ * Releases memory for a nested arena back to its parent arena
+ */
+void  arena_free_nested(Arena *nested_arena) {
+    if (!nested_arena) return;
+    arena_free_block((void *)nested_arena);
+}
+
+/*
+ * Create a bump allocator
+ * Initializes a bump allocator within a parent arena
+ * Returns NULL if the parent arena is NULL, requested size is too small, or allocation fails
+ */
+Bump *bump_new(Arena *parent_arena, ssize_t size) {
+    if (!parent_arena) return NULL;
+    if (size <= 0 || (size_t)size < sizeof(Bump) + MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
+    void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
+    if (!data) return NULL;
+    Bump *bump = (Bump *)((char *)data - sizeof(Block));    // just cast allocated memory to Bump
+
+    bump->arena = parent_arena;
+    bump->offset = sizeof(Bump);
+
+    return bump;
+}
+
+/*
+ * Allocate memory from a bump allocator
+ * Returns a pointer to the allocated memory or NULL if allocation fails
+ */
+void  *bump_alloc(Bump *bump, ssize_t size) {
+    if (!bump) return NULL;
+    if (size <= 0 || (size_t)size > bump->capacity - bump->offset) return NULL;
+    void *memory = (char *)bump + bump->offset;
+    bump->offset += size;
+    return memory;
+}
+
+/*
+ * Reset a bump allocator
+ * Resets the bump allocator's offset to the beginning
+ */
+void  bump_reset(Bump *bump) {
+    if (!bump) return;
+    bump->offset = sizeof(Bump);
+}
+
+/*
+ * Free a bump allocator
+ * Returns memory back to parent arena
+ */
+void  bump_free(Bump *bump) {
+    if (!bump) return;
+    arena_free_block((char *)bump + sizeof(Bump));
+}
+
 #ifdef DEBUG
+
+#ifdef USE_WPRINT
+    #include <wchar.h>
+    #define PRINTF wprintf
+    #define T(str) L##str
+#else
+    #include <stdio.h>
+    #define PRINTF printf
+    #define T(str) str
+#endif
+
 /*
  * Helper function to print LLRB tree structure
  * Recursively prints the tree with indentation to show hierarchy
@@ -632,9 +784,9 @@ void print_llrb_tree(Block *node, int depth) {
     print_llrb_tree(node->right_free, depth + 1);
     
     // Print current node with indentation
-    for (int i = 0; i < depth; i++) printf("    ");
-    printf("Block: %p, Size: %lu %i\n",
-        node, 
+    for (int i = 0; i < depth; i++) PRINTF(T("    "));
+    PRINTF(T("Block: %p, Size: %lu %i\n"),
+        node,
         node->size,
         get_color(node));
     
@@ -648,14 +800,14 @@ void print_llrb_tree(Block *node, int depth) {
  * Useful for debugging and understanding memory usage
  */
 void print_arena(Arena *arena) {
-    printf("Arena: %p\n", arena);
-    printf("Arena Full Size: %lu\n", arena->capacity + sizeof(Arena));
-    printf("Arena Data Size: %lu\n", arena->capacity);
-    printf("Data: %p\n", arena->data);
-    printf("Tail: %p\n", arena->tail);
-    printf("Free Blocks: %p\n", arena->free_blocks);
-    printf("Free Size in Tail: %lu\n", arena->free_size_in_tail);
-    printf("\n");
+    PRINTF(T("Arena: %p\n"), arena);
+    PRINTF(T("Arena Full Size: %lu\n"), arena->capacity + sizeof(Arena));
+    PRINTF(T("Arena Data Size: %lu\n"), arena->capacity);
+    PRINTF(T("Data: %p\n"), (void *)((char *)arena + sizeof(Arena)));
+    PRINTF(T("Tail: %p\n"), get_pointer(arena->tail));
+    PRINTF(T("Free Blocks: %p\n"), arena->free_blocks);
+    PRINTF(T("Free Size in Tail: %lu\n"), arena->free_size_in_tail);
+    PRINTF(T("\n"));
 
     size_t occupied_data = 0;
     size_t occupied_meta = 0;
@@ -663,39 +815,39 @@ void print_arena(Arena *arena) {
 
     occupied_meta = sizeof(Arena);
 
-    Block *block = (Block *)arena->data;
+    Block *block = (Block *)((char *)arena + sizeof(Arena));
     while (block != NULL) {
         occupied_data += block->size;
         occupied_meta += sizeof(Block);
         len++;
-        printf("  Block: %p\n", block);
-        printf("  Block Full Size: %lu\n", block->size + sizeof(Block));
-        printf("  Block Data Size: %lu\n", block->size);
-        printf("  Is Free: %d\n", get_is_free(block));
-        printf("  Data Pointer: %p\n", block_data(block));
-        printf("  Arena: %p\n", block->arena);
-        printf("  Next: %p\n", next_block(arena, block));
-        printf("  Prev: %p\n", get_pointer(block->prev));
-        printf("  Color: %s\n", get_color(block) ? "RED" : "BLACK");
-        printf("  Left Free: %p\n", block->left_free);
-        printf("  Right Free: %p\n", block->right_free);
-        printf("\n");
+        PRINTF(T("  Block: %p\n"), block);
+        PRINTF(T("  Block Full Size: %lu\n"), block->size + sizeof(Block));
+        PRINTF(T("  Block Data Size: %lu\n"), block->size);
+        PRINTF(T("  Is Free: %d\n"), get_is_free(block));
+        PRINTF(T("  Data Pointer: %p\n"), block_data(block));
+        PRINTF(T("  Arena: %p\n"), block->arena);
+        PRINTF(T("  Next: %p\n"), next_block(arena, block));
+        PRINTF(T("  Prev: %p\n"), get_pointer(block->prev));
+        PRINTF(T("  Color: %s\n"), get_color(block) ? "RED" : "BLACK");
+        PRINTF(T("  Left Free: %p\n"), block->left_free);
+        PRINTF(T("  Right Free: %p\n"), block->right_free);
+        PRINTF(T("\n"));
         block = next_block(arena, block);
     }
 
-    printf("Arena Free Blocks\n");
+    PRINTF(T("Arena Free Blocks\n"));
 
     Block *free_block = arena->free_blocks;
-    if (free_block == NULL) printf("  None\n");
+    if (free_block == NULL) PRINTF(T("  None\n"));
     else {
         print_llrb_tree(free_block, 0);
     }
-    printf("\n");
+    PRINTF(T("\n"));
 
-    printf("Arena occupied data size: %lu\n", occupied_data);
-    printf("Arena occupied meta size: %lu\n", occupied_meta);
-    printf("Arena occupied full size: %lu\n", occupied_data + occupied_meta);
-    printf("Arena block count: %lu\n", len);
+    PRINTF(T("Arena occupied data size: %lu\n"), occupied_data);
+    PRINTF(T("Arena occupied meta size: %lu\n"), occupied_meta);
+    PRINTF(T("Arena occupied full size: %lu\n"), occupied_data + occupied_meta);
+    PRINTF(T("Arena block count: %lu\n"), len);
 }
 
 /*
@@ -708,11 +860,11 @@ void print_fancy(Arena *arena, size_t bar_size) {
     
     size_t total_size = arena->capacity;
 
-    printf("\nArena Memory Visualization [%zu bytes]\n", total_size + sizeof(Arena));
-    printf("┌");
-    for (int i = 0; i < (int)bar_size; i++) printf("─");
-    printf("┐\n│");
-    
+    PRINTF(T("\nArena Memory Visualization [%zu bytes]\n"), total_size + sizeof(Arena));
+    PRINTF(T("┌"));
+    for (int i = 0; i < (int)bar_size; i++) PRINTF(T("─"));
+    PRINTF(T("┐\n│"));
+
     // Size of one segment of visualization in bytes
     double segment_size = (double)(total_size / bar_size);
     
@@ -739,7 +891,7 @@ void print_fancy(Arena *arena, size_t bar_size) {
         
         // Check each block
         size_t current_pos = 0;
-        Block *current = (Block *)arena->data;
+        Block *current = (Block *)((char *)arena + sizeof(Arena));
         
         while (current) {
             // Position of block metadata
@@ -800,25 +952,25 @@ void print_fancy(Arena *arena, size_t bar_size) {
         
         // Display the corresponding symbol with color
         if (segment_type == '@') {
-            printf("\033[43m@\033[0m"); // Yellow for metadata
+            PRINTF(T("\033[43m@\033[0m")); // Yellow for metadata
         } else if (segment_type == '#') {
-            printf("\033[41m#\033[0m"); // Red for occupied blocks
+            PRINTF(T("\033[41m#\033[0m")); // Red for occupied blocks
         } else if (segment_type == ' ') {
-            printf("\033[42m \033[0m"); // Green for free blocks
+            PRINTF(T("\033[42m \033[0m")); // Green for free blocks
         } else if (segment_type == '-') {
-            printf("\033[40m \033[0m"); // Black for empty space
+            PRINTF(T("\033[40m \033[0m")); // Black for empty space
         }
     }
-    
-    printf("│\n└");
-    for (int i = 0; i < (int)bar_size; i++) printf("─");
-    printf("┘\n");
 
-    printf("Legend: ");
-    printf("\033[43m @ \033[0m - Used Meta blocks, ");
-    printf("\033[41m # \033[0m - Used Data blocks, ");
-    printf("\033[42m   \033[0m - Free blocks, ");
-    printf("\033[40m   \033[0m - Empty space\n\n");
+    PRINTF(T("│\n└"));
+    for (int i = 0; i < (int)bar_size; i++) PRINTF(T("─"));
+    PRINTF(T("┘\n"));
+
+    PRINTF(T("Legend: "));
+    PRINTF(T("\033[43m @ \033[0m - Used Meta blocks, "));
+    PRINTF(T("\033[41m # \033[0m - Used Data blocks, "));
+    PRINTF(T("\033[42m   \033[0m - Free blocks, "));
+    PRINTF(T("\033[40m   \033[0m - Empty space\n\n"));
 }
 #endif // DEBUG
 
