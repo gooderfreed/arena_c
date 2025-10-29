@@ -7,71 +7,93 @@
 [![C Project CI](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml)
 <!-- There. Shiny enough? Now let's get back to actual work. -->
 
-**A fast, efficient, and easy-to-use header-only arena memory allocator library written in pure C.**
+**A fast, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
 
 This library serves as the core memory allocator for the [Zen Framework](https://github.com/gooderfreed/Zen) - a lightweight, modular framework for building console applications in C. The arena allocator provides efficient memory management for Zen's component-oriented architecture and interactive features.
 
 ## Overview
 
-This library provides a header-only implementation of an arena memory allocator in C. Arena allocation is a memory management technique that allocates memory in large chunks (arenas) and then subdivides those chunks into smaller blocks for application use. This approach offers significant performance benefits and control over memory allocation and deallocation, especially in scenarios with frequent allocations and deallocations of objects of similar lifecycles.
+This library provides a header-only implementation of an arena-based memory allocator in C. Arena allocation is a memory management technique that allocates memory in large chunks (arenas) and then subdivides them for application use, which can offer significant performance benefits in scenarios with frequent allocations.
 
-**Key Benefits of Arena Allocation:**
+This implementation is designed with a focus on **performance, memory efficiency, and flexibility**, providing advanced features like nested arenas and bump sub-allocation within a robust, portable package.
 
-*   **Performance:** Logarithmic O(log n) time complexity for allocations using a Left-Leaning Red-Black Tree (LLRB) for managing free blocks, significantly faster than general-purpose allocators like `malloc`/`free`.
-*   **Efficiency:** Reduced memory fragmentation and smaller metadata overhead, leading to better memory utilization within the arena.
-*   **Control:**  Deterministic deallocation - freeing the entire arena at once is very fast and predictable. Individual blocks can also be freed for memory reuse within the arena.
+**Key Benefits:**
+
+*   **High Performance:** Fast allocations with O(log n) complexity for finding free blocks (via an LLRB-Tree) and O(1) for most tail allocations.
+*   **Memory Efficiency:** Minimized metadata overhead and reduced memory fragmentation.
+*   **Flexible Sub-allocation:**
+    *   **Nested Arenas** for hierarchical memory management (`arena_new_nested`).
+    *   **Bump Allocators** for extremely fast, zero-overhead allocation of many small objects (`bump_new`).
+*   **Fine-grained Control:** Supports freeing individual blocks (`arena_free_block`) for memory reuse, in addition to fast full-arena resets.
+*   **Source-Agnostic API:** The core functions operate on an `Arena*` handle, making them independent of the memory source. This allows for easy switching between static and dynamic arenas without altering the allocation logic.
 *   **Simplicity:**  Easy to integrate into C projects as a header-only library.
 
-**When to Use Arena Allocation:**
+## Recommended Use Cases
 
-*   Game development:  For managing game objects, particles, and temporary data that are often created and destroyed together.
-*   Real-time systems:  Where predictable allocation and deallocation times are crucial for performance consistency.
-*   Parsing and data processing:  For managing temporary data structures during parsing or processing large datasets that can be efficiently deallocated in bulk.
-*   Any application where you need to allocate and deallocate many objects, especially of similar sizes and lifecycles, in a controlled and efficient manner.
+This library provides a flexible, high-performance alternative to standard `malloc`/`free` for a wide range of applications. It excels in scenarios requiring:
+*   **High-throughput Allocations:** In systems that perform a large number of allocations and deallocations, such as game engines, network servers, or custom data structures. The O(1) tail allocation and bump sub-allocators are ideal for this.
+*   **Controlled Memory Lifecycles:** When you can group objects into scopes and deallocate them all at once (e.g., per-frame data, per-request state, parsing a file). This is the classic arena use case, and it's extremely fast.
+*   **Reduced Memory Fragmentation:** For long-running applications where standard allocator fragmentation can become a problem. The block-merging strategy helps keep the memory pool healthy.
+*   **Fine-grained Memory Management:** When you need more control than `malloc` offers, but want to avoid writing a full custom allocator. The combination of individual `free`, bump allocators, and nested arenas provides a powerful toolkit.
+*   **Simplified Multithreading:** In parallel systems using a "one-allocator-per-thread" model. The `arena_new_nested` function makes this pattern safe and easy to implement without locks.
 
 ## Features
 
-*   **Header-Only Library:**  Easy integration - just include `arena_allocator.h` in your project.
-*   **Static and Dynamic Arena Creation:**
-    *   **Static Arena:**  Create arenas within pre-allocated memory regions (e.g., on the stack or in a global buffer) for maximum control and predictability.
-    *   **Dynamic Arena:**  Dynamically allocate arena memory from the heap using `malloc`.
-*   **Optimized Allocation Strategy:** 
-    *   **Free Block Allocation:** Uses a balanced LLRB tree to find the best fitting block with O(log n) complexity
-    *   **Tail Allocation:** Falls back to allocating from the tail when no suitable free blocks are available
-*   **Block-Level Deallocation (`arena_free_block`):**  Allows freeing individual blocks within the arena, enabling memory reuse and finer-grained control over memory management beyond full arena resets.
-*   **Memory Efficiency:**  Reduces fragmentation and improves memory utilization, especially when managing many objects within a defined memory scope.
-*   **Arena Reset:**  Quickly reset the entire arena, marking all allocated blocks as free for reuse, offering a fast way to bulk-deallocate memory.
-*   **Debugging Tools:**  Includes `print_arena` and `print_fancy` functions (enabled via `DEBUG` macro) for detailed arena state inspection and visualization during development.
-*   **Customizable Minimum Block Size:**  Adjust `MIN_BUFFER_SIZE` macro in `arena_allocator.h` to fine-tune memory usage and fragmentation behavior based on your application's specific allocation patterns.
-*   **Embedded Arena Metadata:** The arena's metadata structures are embedded directly within the allocated memory block, minimizing external dependencies but slightly reducing the total usable memory within the arena.
-*   **Clear and Well-Commented Code:**  Easy to understand and modify.
-*   **MIT License:**  Permissive open-source license.
+*   **Header-Only & Portable:** Easy to integrate by including a single header. Continuously tested on Linux, macOS, Windows, x86_64, x86_32, and ARM64.
 
-**Important Considerations:**
+*   **Flexible Arena Creation:**
+    *   **Static Arena:** Use pre-allocated memory (stack, global buffer).
+    *   **Dynamic Arena:** Allocate the arena's memory from the heap.
+    *   **Nested Arenas:** Safely create sub-arenas within a parent, ideal for thread-local storage.
 
-*   **Arena Metadata Overhead:**  The arena metadata (e.g., block headers) consumes a small portion of the allocated arena memory. While optimized to only 48 bytes per block header, this overhead can become significant if you allocate a very large number of extremely small, individual objects separately. **It is NOT RECOMMENDED to use arena allocation for scenarios requiring allocation of a vast quantity of tiny, independent objects.**  For optimal efficiency, arena allocation is best suited for managing larger objects or groups of related objects with similar lifecycles.
-*   **Memory Locality:** Arena allocation can improve memory locality, as objects allocated within the same arena are likely to be physically close in memory, potentially improving cache performance.
+*   **Advanced Allocation Strategies:**
+    *   **General-Purpose Allocation:** An efficient free-list allocator with O(log n) performance using an LLRB-Tree and block merging to combat fragmentation.
+    *   **Bump Sub-allocation:** Create zero-overhead bump allocators from any block for extremely fast, sequential allocations of small objects.
+    *   **Optimized Tail Allocation:** Most allocations at the end of the arena are O(1).
+
+*   **Memory Correctness & Efficiency:**
+    *   **Automatic Memory Alignment:** All allocations are aligned by default to `16` bytes, ensuring compatibility with SIMD (SSE) instructions.
+    *   **Minimal Metadata Overhead:** Only **32 bytes** per `Arena` and `Block` header, achieved via pointer tagging and optimized struct layout.
+
+*   **Full Memory Control:**
+    *   **Individual Block Freeing:** `arena_free_block` allows freeing blocks in any order, just like a standard allocator.
+    *   **Fast Arena Reset:** `arena_reset` deallocates all blocks within an arena in O(1) time without freeing the arena's own memory.
+
+*   **Excellent Developer Experience:**
+    *   **Source-Agnostic API:** A single set of functions works on both static and dynamic arenas.
+    *   **Powerful Debugging Tools:** Optional `print_arena` and `print_fancy` functions provide detailed, colorized visualizations of the arena's state.
+
+*   **Customizable & Open:**
+    *   **Tunable `MIN_BUFFER_SIZE`:** Adjust the trade-off between memory fragmentation and overhead.
+    *   **Permissive MIT License:** Use it in any project.
+
+## Important Considerations & Best Practices
+
+*   **Metadata Overhead:** The allocator is highly optimized to minimize metadata overhead. Each `Arena` and `Block` header consumes only **32 bytes**. While this is very low, allocating a huge number of tiny, individual objects directly from the main arena can still be inefficient.
+*   **Handling Many Small Objects:** For scenarios requiring a high volume of small, short-lived allocations, the recommended approach is to use a **Bump sub-allocator**. Create a single, larger block with `bump_new` and perform subsequent tiny allocations from it with near-zero overhead. This combines the flexibility of the main arena with the raw speed of a bump allocator.
+*   **No `realloc` Equivalent:** This library does not provide a direct equivalent of `realloc`. Resizing a block would require moving its contents, which goes against the core design principles of an arena where object locations are stable. Plan your memory requirements accordingly or implement resizing at the application level.
+*   **Memory Locality:** Allocating related objects within the same arena generally improves memory locality, as they are likely to be physically close in memory. This can lead to better cache performance compared to allocations scattered across the heap by a general-purpose allocator.
 
 ## Getting Started
 
 ### 1. Include the Header File
 
 ```c
-#include "arena_allocator.h"
+#include "arena.h"
 ```
 
-Make sure to copy `arena_allocator.h` into your project's include directory or adjust the include path accordingly.
+Make sure to copy `arena.h` into your project's include directory or adjust the include path accordingly.
 
 ### 2. Implement Arena Allocator Functions (Once per Project)
 
-In **one** of your `.c` files (e.g., `arena_impl.c`), define the `ARENA_IMPLEMENTATION` macro **before** including `arena_allocator.h`:
+In **one** of your `.c` files (e.g., `arena_impl.c`), define the `ARENA_IMPLEMENTATION` macro **before** including `arena.h`:
 
 ```c
 #define ARENA_IMPLEMENTATION
-#include "arena_allocator.h"
+#include "arena.h"
 ```
 
-**Important:**  Define `ARENA_IMPLEMENTATION` in **only one** C file in your project. This will compile the implementation of the arena allocator functions.  In all other files where you use the arena allocator, just include `arena_allocator.h` without defining `ARENA_IMPLEMENTATION`.
+**Important:**  Define `ARENA_IMPLEMENTATION` in **only one** C file in your project. This will compile the implementation of the arena allocator functions.  In all other files where you use the arena allocator, just include `arena.h` without defining `ARENA_IMPLEMENTATION`.
 
 ### Alternative Integration for Large Projects
 
@@ -81,13 +103,13 @@ You can achieve this by adding a specific build rule to your build system (e.g.,
 
 ```bash
 # Example Makefile rule
-arena.o: arena_allocator.h
-	gcc -x c -DARENA_IMPLEMENTATION -c arena_allocator.h -o arena.o
+arena.o: arena.h
+	gcc -x c -DARENA_IMPLEMENTATION -c arena.h -o arena.o
 ```
 
 **Explanation:**
 
-*   `gcc -x c`: This flag tells `gcc` to treat the input file (`arena_allocator.h`) as a C source file, even though it has a `.h` extension.
+*   `gcc -x c`: This flag tells `gcc` to treat the input file (`arena.h`) as a C source file, even though it has a `.h` extension.
 *   `-DARENA_IMPLEMENTATION`: This defines the necessary macro to include the function implementations.
 *   `-c`: This tells `gcc` to compile the source file into an object file (`arena.o`) without linking.
 
@@ -98,10 +120,10 @@ Then, simply link the resulting `arena.o` object file with the rest of your proj
 **Dynamic Arena (Memory allocated using `malloc`):**
 
 ```c
-#include "arena_allocator.h"
+#include "arena.h"
 
 int main() {
-    size_t arena_size = 1024 * 1024; // 1MB arena
+    ssize_t arena_size = 1024 * 1024; // 1MB arena
     Arena *arena = arena_new_dynamic(arena_size);
     if (!arena) {
         // Handle allocation error
@@ -118,7 +140,7 @@ int main() {
 **Static Arena (Using pre-allocated memory):**
 
 ```c
-#include "arena_allocator.h"
+#include "arena.h"
 
 #define ARENA_SIZE (1024 * 1024) // 1MB arena
 char arena_memory[ARENA_SIZE];
@@ -176,9 +198,73 @@ if (my_int_reused) {
 arena_free(arena); // Free the entire arena when done
 ```
 
-### 5. Free Memory (Arena-Level Deallocation)
+### 5. Advanced Usage: Sub-allocation
 
-Arena allocators are primarily designed for bulk deallocation.  You can choose to free individual blocks using `arena_free_block` for memory reuse, or you can efficiently deallocate all memory associated with the arena at once using:
+The allocator provides powerful sub-allocation features for advanced use cases like thread-local storage or managing high volumes of small objects.
+
+#### Using a Nested Arena
+
+Nested arenas are perfect for creating temporary, scoped memory pools, such as for a single task in a thread pool or for processing one request in a server.
+
+```c
+void process_request(Arena *main_arena) {
+    // Create a temporary arena for this specific request from the main arena.
+    Arena *request_arena = arena_new_nested(main_arena, 1024 * 64); // 64KB for this task
+    if (!request_arena) {
+        // Not enough space in the main arena
+        return;
+    }
+
+    // Perform all allocations for this request from the temporary arena.
+    char *user_data = (char *)arena_alloc(request_arena, 100);
+    int *session_ids = (int *)arena_alloc(request_arena, sizeof(int) * 256);
+    // ... more allocations ...
+    
+    // Once the request is processed, free the entire nested arena in one go.
+    // All memory allocated from request_arena is instantly returned to the main_arena.
+    arena_free_nested(request_arena);
+}
+```
+
+#### Using a Bump Allocator for Small Objects
+
+When you need to allocate a very large number of small, short-lived objects (e.g., nodes in a graph, particles in a simulation), a bump allocator is the fastest method possible.
+
+```c
+typedef struct { float x, y, z; } Vector3;
+
+void spawn_particles(Arena *main_arena) {
+    // 1. Allocate a single large block and initialize it as a bump allocator.
+    Bump *particle_memory = bump_new(main_arena, sizeof(Vector3) * 10000); // Space for 10k particles
+    if (!particle_memory) {
+        // Not enough space in the main arena
+        return;
+    }
+
+    // 2. Perform extremely fast allocations from the bump allocator.
+    // This is just incrementing a pointer, with near-zero overhead.
+    Vector3 *particles[10000];
+    for (int i = 0; i < 10000; ++i) {
+        particles[i] = (Vector3 *)bump_alloc(particle_memory, sizeof(Vector3));
+        if (!particles[i]) {
+            // Bump allocator is full
+            break; 
+        }
+        particles[i]->x = i; 
+        // ... initialize particle ...
+    }
+
+    // ... use the particles ...
+
+    // 3. When done, free the entire block back to the main arena.
+    // All 10,000 allocations are freed in a single operation.
+    bump_free(particle_memory);
+}
+```
+
+### 6. Free Memory (Arena-Level Deallocation)
+
+This allocator offers **multiple deallocation strategies**. You can free individual blocks using `arena_free_block` for fine-grained control, or deallocate all memory within the arena at once for maximum speed using:
 
 **Free Dynamic Arena:**
 
@@ -207,6 +293,36 @@ Then, you can call `print_arena(arena)` or `print_fancy(arena, 100)` to print de
 **`MIN_BUFFER_SIZE` Macro:**
 
 You can adjust the `MIN_BUFFER_SIZE` macro in `arena_allocator.h` to control the minimum size of free blocks that are kept after splitting.  Experiment with different values to optimize for your specific use case and balance memory usage with allocation speed.
+
+## Build Status & Portability
+
+The library is continuously tested across a wide range of operating systems, compilers, and architectures to ensure maximum reliability and portability.
+
+### By Operating System
+
+| OS      | Status                                                                                                                                                                                             |
+|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Ubuntu  | ![Ubuntu Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=ubuntu&logo=ubuntu&logoColor=white)          |
+| macOS   | ![macOS Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=macos-latest%20%7C%20x86_64%20%7C%20clang&label=macOS&logo=apple&logoColor=white)           |
+| Windows | ![Windows Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=windows&logo=windows&logoColor=white)       |
+
+### By Compiler
+
+| Compiler    | Status                                                                                                                                                                                            |
+|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| GCC         | ![GCC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=gcc&logo=gcc&logoColor=white)               |
+| GCC (MinGW) | ![GCC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=gcc%20(mingw)&logo=windows&logoColor=white)    |
+| Clang       | ![Clang Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20clang&label=clang&logo=llvm&logoColor=white)          |
+| MSVC        | ![MSVC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=msvc&logo=visualstudio&logoColor=white)    |
+
+### By Architecture
+
+| Architecture          | Alignment Mode | Status                                                                                                                                                                                                                       |
+|-----------------------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `x86_64` (64-bit)     | Standard       | ![x86_64 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=x86_64&logo=intel&logoColor=white)                                     |
+| `x86`    (32-bit)     | Standard       | ![x86_32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20x86_32%20%7C%20GCC&label=x86&logo=intel&logoColor=white)                                            |
+| `ARM64` (AArch64)     | Forgiving      | ![ARM64 Modern Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Modern,%20Forgiving%20Alignment)%20%7C%20GCC&label=arm&logo=arm&logoColor=white)     |
+| `ARM64` (AArch64)     | Strict (UBSan) | ![ARM64 Strict Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Strict%20Alignment%20via%20UBSan)%20%7C%20GCC&label=arm(ubsan)&logo=arm&logoColor=white)    |
 
 ## License
 
