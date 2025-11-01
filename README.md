@@ -1,4 +1,4 @@
-# Header-Only Arena Allocator in C
+# Header-Only Arena-Based Memory Allocator in C
 
 <!-- Look ma, I added badges! Now my toy is a "serious project"! -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -278,7 +278,7 @@ arena_free(arena); // Frees memory allocated by arena_new_dynamic, including all
 arena_reset(arena); // Resets the arena, marking all blocks as free and ready for reuse, but without freeing the arena's underlying memory itself.  Useful for reusing the arena for a new phase of allocation.
 ```
 
-### 6. Debugging with `print_arena` and `print_fancy`
+### 7. Debugging with `print_arena` and `print_fancy`
 
 To enable debugging output, compile your code with the `DEBUG` macro defined:
 
@@ -300,29 +300,29 @@ The library is continuously tested across a wide range of operating systems, com
 
 ### By Operating System
 
-| OS      | Status                                                                                                                                                                                             |
-|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Ubuntu  | ![Ubuntu Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=ubuntu&logo=ubuntu&logoColor=white)          |
+| OS      | Status                                                                                                                                                                                           |
+|---------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Ubuntu  | ![Ubuntu Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=ubuntu&logo=ubuntu&logoColor=white)         |
 | macOS   | ![macOS Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=macos-latest%20%7C%20x86_64%20%7C%20clang&label=macOS&logo=apple&logoColor=white)           |
-| Windows | ![Windows Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=windows&logo=windows&logoColor=white)       |
+| Windows | ![Windows Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=windows&logo=windows&logoColor=white)     |
 
 ### By Compiler
 
-| Compiler    | Status                                                                                                                                                                                            |
-|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| GCC         | ![GCC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=gcc&logo=gcc&logoColor=white)               |
-| GCC (MinGW) | ![GCC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=gcc%20(mingw)&logo=windows&logoColor=white)    |
+| Compiler    | Status                                                                                                                                                                                          |
+|-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| GCC         | ![GCC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=gcc&logo=gcc&logoColor=white)                 |
+| GCC (MinGW) | ![GCC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=gcc%20(mingw)&logo=windows&logoColor=white)  |
 | Clang       | ![Clang Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20clang&label=clang&logo=llvm&logoColor=white)          |
-| MSVC        | ![MSVC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=msvc&logo=visualstudio&logoColor=white)    |
+| MSVC        | ![MSVC Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=windows-latest%20%7C%20x86_64%20%7C%20gcc&label=msvc&logo=visualstudio&logoColor=white)     |
 
 ### By Architecture
 
-| Architecture          | Alignment Mode | Status                                                                                                                                                                                                                       |
-|-----------------------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `x86_64` (64-bit)     | Standard       | ![x86_64 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=x86_64&logo=intel&logoColor=white)                                     |
-| `x86`    (32-bit)     | Standard       | ![x86_32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20x86_32%20%7C%20GCC&label=x86&logo=intel&logoColor=white)                                            |
-| `ARM64` (AArch64)     | Forgiving      | ![ARM64 Modern Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Modern,%20Forgiving%20Alignment)%20%7C%20GCC&label=arm&logo=arm&logoColor=white)     |
-| `ARM64` (AArch64)     | Strict (UBSan) | ![ARM64 Strict Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Strict%20Alignment%20via%20UBSan)%20%7C%20GCC&label=arm(ubsan)&logo=arm&logoColor=white)    |
+| Architecture          | Alignment Mode | Status                                                                                                                                                                                                                         |
+|-----------------------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `x86_64` (64-bit)     | Standard       | ![x86_64 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=x86_64&logo=intel&logoColor=white)                                        |
+| `x86`    (32-bit)     | Standard       | ![x86_32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20x86_32%20%7C%20GCC&label=x86&logo=intel&logoColor=white)                                                  |
+| `ARM64` (AArch64)     | Forgiving      | ![ARM64 Modern Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Modern,%20Forgiving%20Alignment)%20%7C%20GCC&label=arm&logo=arm&logoColor=white)           |
+| `ARM64` (AArch64)     | Strict (UBSan) | ![ARM64 Strict Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Strict%20Alignment%20via%20UBSan)%20%7C%20GCC&label=arm(ubsan)&logo=arm&logoColor=white)   |
 
 ## License
 

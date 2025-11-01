@@ -108,18 +108,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-multilib gdb
-      - name: Build and Test in 32-bit mode under GDB
-        run: |
-          # Build tests with debug symbols
-          make tests CC="gcc -m32 -g"
-          
-          # Run the failing test under GDB to get a backtrace
-          echo "--- Running stress_test_silent under GDB ---"
-          gdb -nx --batch \
-            -ex 'run' \
-            -ex 'bt' \
-            -ex 'quit' \
-            --args tests/stress_test_silent
+      - name: Build and Test in 32-bit mode
+        run: make tests CC="gcc -m32"
 
   # Job 3: Build and test on modern ARM64 (aarch64) - forgiving alignment
   build-and-test-arm64-modern:
@@ -162,4 +152,52 @@ jobs:
               \
               echo '--- Building and running tests with UBSan for alignment ---' && \
               make tests_full CC='gcc -g -fsanitize=alignment' \
+            "
+
+  # Job 5: Build and test on Big Endian architecture (s390x)
+  build-and-test-big-endian:
+    name: Ubuntu | Big Endian (s390x) | GCC
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up QEMU for s390x emulation
+        uses: docker/setup-qemu-action@v3
+      - name: Build and Test in Big Endian (s390x) Docker container
+        run: |
+          docker run --rm --platform linux/s390x \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            s390x/ubuntu:latest \
+            sh -c " \
+              echo '--- Installing dependencies for s390x ---' && \
+              apt-get update -y && \
+              apt-get install -y build-essential gcc make && \
+              \
+              echo '--- Building and running tests on Big Endian ---' && \
+              make tests_full CC=gcc \
+            "
+
+  # Job 6: Build and test on 32-bit ARM (armv7)
+  build-and-test-arm32:
+    name: Ubuntu | ARM32 (armv7) | GCC
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up QEMU for ARM32 emulation
+        uses: docker/setup-qemu-action@v3
+      - name: Build and Test in ARM32 (armv7) Docker container
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            arm32v7/ubuntu:latest \
+            sh -c " \
+              echo '--- Installing dependencies for ARM32 ---' && \
+              apt-get update -y && \
+              apt-get install -y build-essential gcc make && \
+              \
+              echo '--- Building and running tests on ARM32 ---' && \
+              make tests_full CC=gcc \
             "
