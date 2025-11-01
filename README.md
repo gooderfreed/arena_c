@@ -41,6 +41,8 @@ This library provides a flexible, high-performance alternative to standard `mall
 
 *   **Extreme Portability:** Header-only and continuously tested on a vast matrix of platforms, including Linux, macOS, and Windows; x86_64, x86_32, ARM64, and ARM32 architectures; and both **Little Endian and Big Endian** byte orders.
 
+*   **Full C++ Compatibility:** Wrapped in `extern "C"` for seamless integration into C++ projects.
+
 *   **Flexible Arena Creation:**
     *   **Static Arena:** Use pre-allocated memory (stack, global buffer).
     *   **Dynamic Arena:** Allocate the arena's memory from the heap.
@@ -69,8 +71,9 @@ This library provides a flexible, high-performance alternative to standard `mall
 
 ## Important Considerations & Best Practices
 
-*   **Metadata Overhead:** The allocator is highly optimized to minimize metadata overhead. Each `Arena` and `Block` header consumes only **32 bytes**. While this is very low, allocating a huge number of tiny, individual objects directly from the main arena can still be inefficient.
+*   **Metadata Overhead:** The allocator is highly optimized to minimize metadata overhead. Each `Arena` and `Block` header consumes **32 bytes on 64-bit systems** and just **16 bytes on 32-bit systems**. While this is very low, allocating a huge number of tiny, individual objects directly from the main arena can still be inefficient.
 *   **Handling Many Small Objects:** For scenarios requiring a high volume of small, short-lived allocations, the recommended approach is to use a **Bump sub-allocator**. Create a single, larger block with `bump_new` and perform subsequent tiny allocations from it with near-zero overhead. This combines the flexibility of the main arena with the raw speed of a bump allocator.
+*   **Target Architectures:** The library is designed and tested for **32-bit and 64-bit architectures**. Its pointer tagging mechanism relies on memory alignment guarantees provided by these platforms. This design makes it **fundamentally incompatible** with typical 8-bit and 16-bit microcontroller architectures that do not guarantee the necessary pointer alignment.
 *   **No `realloc` Equivalent:** This library does not provide a direct equivalent of `realloc`. Resizing a block would require moving its contents, which goes against the core design principles of an arena where object locations are stable. Plan your memory requirements accordingly or implement resizing at the application level.
 *   **Memory Locality:** Allocating related objects within the same arena generally improves memory locality, as they are likely to be physically close in memory. This can lead to better cache performance compared to allocations scattered across the heap by a general-purpose allocator.
 

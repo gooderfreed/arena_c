@@ -1,6 +1,10 @@
 #ifndef ARENA_ALLOCATOR_H
 #define ARENA_ALLOCATOR_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -55,7 +59,10 @@ struct Block {
     };
 };
 
-
+/*
+ * Bump allocator structure
+ * A simple allocator that allocates memory linearly from a pre-allocated block
+ */
 struct Bump {
     union {
         Block *block_representation; // Block representation for compatibility
@@ -81,13 +88,15 @@ struct Arena {
     size_t free_size_in_tail;            // Free space available in the tail block
 };
 
-
+#ifndef ARENA_NO_MALLOC
 Arena *arena_new_dynamic(ssize_t size);
+void arena_free(Arena *arena);
+#endif // ARENA_NO_MALLOC
+
 Arena *arena_new_static(void *memory, ssize_t size);
 void arena_reset(Arena *arena);
 void *arena_alloc(Arena *arena, ssize_t size);
 void arena_free_block(void *data);
-void arena_free(Arena *arena);
 
 Arena *arena_new_nested(Arena *parent_arena, ssize_t size);
 void  arena_free_nested(Arena *nested_arena);
@@ -643,6 +652,7 @@ Arena *arena_new_static(void *memory, ssize_t size) {
     return arena;
 }
 
+#ifndef ARENA_NO_MALLOC
 /*
  * Create a dynamic arena
  * Allocates memory for the arena and initializes it as a dynamic arena
@@ -674,6 +684,7 @@ void arena_reset(Arena *arena) {
     arena->free_blocks = NULL;
     arena->free_size_in_tail = arena->capacity - sizeof(Block);
 }
+#endif // ARENA_NO_MALLOC
 
 /*
  * Free a dynamic arena
@@ -975,5 +986,9 @@ void print_fancy(Arena *arena, size_t bar_size) {
 #endif // DEBUG
 
 #endif // ARENA_IMPLEMENTATION
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif // ARENA_ALLOCATOR_H
