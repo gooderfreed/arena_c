@@ -39,7 +39,7 @@ This library provides a flexible, high-performance alternative to standard `mall
 
 ## Features
 
-*   **Header-Only & Portable:** Easy to integrate by including a single header. Continuously tested on Linux, macOS, Windows, x86_64, x86_32, and ARM64.
+*   **Extreme Portability:** Header-only and continuously tested on a vast matrix of platforms, including Linux, macOS, and Windows; x86_64, x86_32, ARM64, and ARM32 architectures; and both **Little Endian and Big Endian** byte orders.
 
 *   **Flexible Arena Creation:**
     *   **Static Arena:** Use pre-allocated memory (stack, global buffer).
@@ -317,12 +317,13 @@ The library is continuously tested across a wide range of operating systems, com
 
 ### By Architecture
 
-| Architecture          | Alignment Mode | Status                                                                                                                                                                                                                         |
-|-----------------------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `x86_64` (64-bit)     | Standard       | ![x86_64 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=x86_64&logo=intel&logoColor=white)                                        |
-| `x86`    (32-bit)     | Standard       | ![x86_32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20x86_32%20%7C%20GCC&label=x86&logo=intel&logoColor=white)                                                  |
-| `ARM64` (AArch64)     | Forgiving      | ![ARM64 Modern Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Modern,%20Forgiving%20Alignment)%20%7C%20GCC&label=arm&logo=arm&logoColor=white)           |
-| `ARM64` (AArch64)     | Strict (UBSan) | ![ARM64 Strict Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Strict%20Alignment%20via%20UBSan)%20%7C%20GCC&label=arm(ubsan)&logo=arm&logoColor=white)   |
+| Architecture          | Endianness | Status                                                                                                                                                                                                                       |
+|-----------------------|------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `x86_64` (64-bit)     | Little     | ![x86_64 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=ubuntu-latest%20%7C%20x86_64%20%7C%20gcc&label=x86_64&logo=intel&logoColor=white)                                      |
+| `x86_32` (32-bit)     | Little     | ![x86_32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20x86_32%20%7C%20GCC&label=x86_32&logo=intel&logoColor=white)                                             |
+| `AArch64` (64-bit)    | Little     | ![ARM64 Modern Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Modern,%20Forgiving%20Alignment)%20%7C%20GCC&label=aarch64&logo=arm&logoColor=white)     |
+| `ARMv7` (32-bit)      | Little     | ![ARM32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM32%20(armv7)%20%7C%20GCC&label=armv7&logo=arm&logoColor=white)                                        |
+| `Big Endian (s390x)`  | Big        | ![Big Endian Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20Big%20Endian%20(s390x)%20%7C%20GCC&label=big-endian&logo=ibm&logoColor=white)                       |
 
 ## License
 
