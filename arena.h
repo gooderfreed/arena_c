@@ -8,6 +8,16 @@ extern "C" {
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
+
+
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || defined(__cplusplus)
+    #include <assert.h>
+    #define ARENA_STATIC_ASSERT(cond, msg) static_assert(cond, #msg)
+#else
+    #define ARENA_STATIC_ASSERT_HELPER(cond, line) typedef char static_assertion_at_line_##line[(cond) ? 1 : -1]
+    #define ARENA_STATIC_ASSERT(cond, msg) ARENA_STATIC_ASSERT_HELPER(cond, __LINE__)
+#endif
 
 #ifdef _WIN32
 #include <BaseTsd.h> // SSIZE_T
@@ -22,6 +32,9 @@ extern "C" {
 #endif
 
 #define DEFAULT_ALIGNMENT 16 // Default memory alignment
+
+ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT >= 4), Default_alignment_must_be_at_least_4);
+ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT > 0) && ((DEFAULT_ALIGNMENT & (DEFAULT_ALIGNMENT - 1)) == 0), Default_alignment_must_be_power_of_two);
 
 #define FLAG_IS_FREE ((uintptr_t)1)    // Flag to indicate if a block is free
 #define FLAG_COLOR   ((uintptr_t)2)    // Flag to indicate the color of a block in LLRB tree
@@ -75,17 +88,19 @@ struct Bump {
     };
 };
 
+ARENA_STATIC_ASSERT((sizeof(Bump) == sizeof(Block)), Size_mismatch_between_Bump_and_Block);
+
 /*
  * Memory arena structure
  * Manages a pool of memory, block allocation, and block states
  */
 struct Arena {
-    size_t capacity;                     // Total capacity of the arena
+    size_t capacity;                // Total capacity of the arena
 
-    Block *tail;                         // Pointer to the last block in the global list, also stores is_dynamic flag via pointer tagging
-    Block *free_blocks;                  // Pointer to the tree of free blocks
+    Block *tail;                    // Pointer to the last block in the global list, also stores is_dynamic flag via pointer tagging
+    Block *free_blocks;             // Pointer to the tree of free blocks
 
-    size_t free_size_in_tail;            // Free space available in the tail block
+    size_t free_size_in_tail;       // Free space available in the tail block
 };
 
 #ifndef ARENA_NO_MALLOC
@@ -95,7 +110,10 @@ void arena_free(Arena *arena);
 
 Arena *arena_new_static(void *memory, ssize_t size);
 void arena_reset(Arena *arena);
+
 void *arena_alloc(Arena *arena, ssize_t size);
+void *arena_calloc(Arena *arena, ssize_t nmemb, ssize_t size);
+
 void arena_free_block(void *data);
 
 Arena *arena_new_nested(Arena *parent_arena, ssize_t size);
@@ -553,6 +571,22 @@ void *arena_alloc(Arena *arena, ssize_t size) {
 }
 
 /*
+ * Allocate zero-initialized memory in the arena
+ * Returns NULL if there is not enough space or overflow is detected
+ */
+void *arena_calloc(Arena *arena, ssize_t nmemb, ssize_t size) {
+    if (nmemb > 0 && (SIZE_MAX / nmemb) < (size_t)size) {
+        return NULL; // Overflow detected
+    }
+    ssize_t total_size = nmemb * size;
+    void *ptr = arena_alloc(arena, total_size);
+    if (ptr) {
+        memset(ptr, 0, total_size); // Zero-initialize the allocated memory
+    }
+    return ptr;
+}
+
+/*
  * Free a block of memory in the arena
  * Marks the block as free, merges it with adjacent free blocks if possible,
  * and updates the free block list
@@ -670,6 +704,18 @@ Arena *arena_new_dynamic(ssize_t size) {
 }
 
 /*
+* Free a dynamic arena
+* Releases memory for dynamically allocated arenas
+*/
+void arena_free(Arena *arena) {
+    if (!arena) return;
+    if (get_is_arena_dynamic(arena)) {
+        free(arena);
+    }
+}
+#endif // ARENA_NO_MALLOC
+
+/*
  * Reset the arena
  * Clears the arena's blocks and resets it to the initial state without freeing memory
  */
@@ -683,18 +729,6 @@ void arena_reset(Arena *arena) {
     override_arena_tail(arena, block);
     arena->free_blocks = NULL;
     arena->free_size_in_tail = arena->capacity - sizeof(Block);
-}
-#endif // ARENA_NO_MALLOC
-
-/*
- * Free a dynamic arena
- * Releases memory for dynamically allocated arenas
- */
-void arena_free(Arena *arena) {
-    if (!arena) return;
-    if (get_is_arena_dynamic(arena)) {
-        free(arena);
-    }
 }
 
 /*
@@ -719,7 +753,7 @@ Arena *arena_new_nested(Arena *parent_arena, ssize_t size) {
  * Free a nested arena
  * Releases memory for a nested arena back to its parent arena
  */
-void  arena_free_nested(Arena *nested_arena) {
+void arena_free_nested(Arena *nested_arena) {
     if (!nested_arena) return;
     arena_free_block((void *)nested_arena);
 }
@@ -734,8 +768,9 @@ Bump *bump_new(Arena *parent_arena, ssize_t size) {
     if (size <= 0 || (size_t)size < sizeof(Bump) + MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
-    Bump *bump = (Bump *)((char *)data - sizeof(Block));    // just cast allocated memory to Bump
+    Bump *bump = (Bump *)((char *)data - sizeof(Block));  // just cast allocated memory to Bump
 
+    bump->capacity = (size_t)(size) + sizeof(Block);
     bump->arena = parent_arena;
     bump->offset = sizeof(Bump);
 
@@ -745,20 +780,44 @@ Bump *bump_new(Arena *parent_arena, ssize_t size) {
 /*
  * Allocate memory from a bump allocator
  * Returns a pointer to the allocated memory or NULL if allocation fails
+ * May return NOT aligned pointer
  */
-void  *bump_alloc(Bump *bump, ssize_t size) {
+void *bump_alloc(Bump *bump, ssize_t size) {
     if (!bump) return NULL;
     if (size <= 0 || (size_t)size > bump->capacity - bump->offset) return NULL;
     void *memory = (char *)bump + bump->offset;
     bump->offset += size;
+
     return memory;
+}
+
+/*
+ * Allocate aligned memory from a bump allocator
+ * Returns a pointer to the allocated memory or NULL if allocation fails
+ */
+void *bump_alloc_aligned(Bump *bump, ssize_t size, size_t alignment) {
+    if (!bump || size <= 0 || alignment == 0 || (alignment & (alignment - 1)) != 0) return NULL;
+
+    uintptr_t current_ptr = (uintptr_t)bump + bump->offset;
+    uintptr_t aligned_ptr = align_up(current_ptr, alignment);
+    size_t padding = aligned_ptr - current_ptr;
+
+    if ((size_t)size > SIZE_MAX - padding) return NULL;
+
+    ssize_t total_size = padding + size;
+
+    if ((size_t)total_size >= bump->capacity - bump->offset) return NULL;
+
+    bump->offset += total_size;
+
+    return (void *)aligned_ptr;
 }
 
 /*
  * Reset a bump allocator
  * Resets the bump allocator's offset to the beginning
  */
-void  bump_reset(Bump *bump) {
+void bump_reset(Bump *bump) {
     if (!bump) return;
     bump->offset = sizeof(Bump);
 }
@@ -767,7 +826,7 @@ void  bump_reset(Bump *bump) {
  * Free a bump allocator
  * Returns memory back to parent arena
  */
-void  bump_free(Bump *bump) {
+void bump_free(Bump *bump) {
     if (!bump) return;
     arena_free_block((char *)bump + sizeof(Bump));
 }
