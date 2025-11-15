@@ -36,9 +36,10 @@ extern "C" {
 ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT >= 4), Default_alignment_must_be_at_least_4);
 ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT > 0) && ((DEFAULT_ALIGNMENT & (DEFAULT_ALIGNMENT - 1)) == 0), Default_alignment_must_be_power_of_two);
 
+#define POINTER_MASK (~(uintptr_t)3)   // Mask to extract the pointer without flags
+
 #define FLAG_IS_FREE ((uintptr_t)1)    // Flag to indicate if a block is free
 #define FLAG_COLOR   ((uintptr_t)2)    // Flag to indicate the color of a block in LLRB tree
-#define POINTER_MASK (~(uintptr_t)3)   // Mask to extract the pointer without flags
 
 #define ARENA_IS_DYNAMIC ((uintptr_t)1) // Flag to indicate if the arena is dynamic
 
@@ -770,7 +771,6 @@ Bump *bump_new(Arena *parent_arena, ssize_t size) {
     if (!data) return NULL;
     Bump *bump = (Bump *)((char *)data - sizeof(Block));  // just cast allocated memory to Bump
 
-    bump->capacity = (size_t)(size) + sizeof(Block);
     bump->arena = parent_arena;
     bump->offset = sizeof(Bump);
 
@@ -784,7 +784,7 @@ Bump *bump_new(Arena *parent_arena, ssize_t size) {
  */
 void *bump_alloc(Bump *bump, ssize_t size) {
     if (!bump) return NULL;
-    if (size <= 0 || (size_t)size > bump->capacity - bump->offset) return NULL;
+    if (size <= 0 || (size_t)size >= (bump->capacity - bump->offset + sizeof(Bump))) return NULL;
     void *memory = (char *)bump + bump->offset;
     bump->offset += size;
 
@@ -806,7 +806,7 @@ void *bump_alloc_aligned(Bump *bump, ssize_t size, size_t alignment) {
 
     ssize_t total_size = padding + size;
 
-    if ((size_t)total_size >= bump->capacity - bump->offset) return NULL;
+    if ((size_t)total_size >= (bump->capacity - bump->offset + sizeof(Bump))) return NULL;
 
     bump->offset += total_size;
 
@@ -828,7 +828,7 @@ void bump_reset(Bump *bump) {
  */
 void bump_free(Bump *bump) {
     if (!bump) return;
-    arena_free_block((char *)bump + sizeof(Bump));
+    arena_free_block_full(bump->arena, (char *)bump + sizeof(Bump));
 }
 
 #ifdef DEBUG
