@@ -52,6 +52,14 @@ void test_bump_creation() {
     bump = bump_new(arena, arena_size - sizeof(Arena) - sizeof(Block));
     ASSERT(bump != NULL, "Bump allocator with size of all arena should be created successfully");
 
+    bump_free(bump);
+
+    bump_free(NULL); // Should not crash
+    ASSERT(true, "Freeing NULL bump allocator should not crash");
+
+    bump_reset(NULL); // Should not crash
+    ASSERT(true, "Resetting NULL bump allocator should not crash");
+
     arena_free(arena);
 }
 
@@ -67,6 +75,10 @@ void test_bump_allocation() {
     ASSERT(bump != NULL, "Bump allocator should be created successfully within the arena");
 
     TEST_PHASE("Allocate memory from Bump Allocator");
+
+    bump_alloc(NULL, 100); // Should not crash
+    ASSERT(true, "Allocating from NULL bump allocator should not crash");
+
     size_t alloc_size1 = 100;
     void *ptr1 = bump_alloc(bump, alloc_size1);
     ASSERT(ptr1 != NULL, "First allocation from bump allocator should succeed");

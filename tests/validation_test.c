@@ -180,11 +180,66 @@ void test_full_arena_allocation(void) {
     arena_free(arena);
 }
 
+void test_static_arena_creation(void) {
+    TEST_CASE("Static Arena Creation");
+
+    TEST_PHASE("Valid static arena creation");
+    size_t static_arena_size = 2048;
+    void *static_memory = malloc(static_arena_size);
+    Arena *static_arena = arena_new_static(static_memory, static_arena_size);
+    ASSERT(static_arena != NULL, "Static arena creation with valid memory should succeed");
+
+    TEST_PHASE("Allocation from static arena");
+    void *alloc1 = arena_alloc(static_arena, 512);
+    ASSERT(alloc1 != NULL, "Allocation from static arena should succeed");
+
+    void *alloc2 = arena_alloc(static_arena, 1024);
+    ASSERT(alloc2 != NULL, "Second allocation from static arena should succeed");
+
+    void *alloc3 = arena_alloc(static_arena, 1024); // This should fail
+    ASSERT(alloc3 == NULL, "Allocation exceeding static arena capacity should fail");
+
+    arena_free(static_arena);
+    free(static_memory);
+}
+
+void test_freeing_invalid_blocks(void) {
+    TEST_CASE("Freeing Invalid Blocks");
+
+    // Create an arena
+    Arena *arena = arena_new_dynamic(1024);
+    ASSERT(arena != NULL, "Arena creation should succeed");
+
+    TEST_PHASE("Freeing a pointer not allocated by the arena");
+    int stack_var = 42;
+    arena_free_block(&stack_var); // Should not crash
+    ASSERT(true, "Freeing stack variable should not crash");
+
+    TEST_PHASE("Freeing a pointer with valid magic number");
+    Block fake_block = {0};
+    fake_block.magic = (void *)0xDEAFBEEF; // Valid magic number
+    void *fake_data = (char*)&fake_block + sizeof(Block);
+    arena_free_block(fake_data); // Should not crash
+    ASSERT(true, "Freeing block with valid magic number should not crash");
+
+    TEST_PHASE("Freeing a pointer from a different arena");
+    Arena *another_arena = arena_new_dynamic(1024);
+    void *ptr = arena_alloc(another_arena, 32);
+    arena_free_block(ptr); // Should not crash
+    ASSERT(true, "Freeing block from different arena should not crash");
+    arena_free(another_arena);
+
+    arena_free(arena);
+}
+
+
 int main(void) {
     test_invalid_allocations();
     test_invalid_arena_creation();
     test_boundary_conditions();
     test_full_arena_allocation();
+    test_static_arena_creation();
+    test_freeing_invalid_blocks();
     
     print_test_summary();
     return tests_failed > 0 ? 1 : 0;
