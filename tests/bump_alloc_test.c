@@ -37,6 +37,10 @@ void test_bump_creation() {
     ASSERT(bump == NULL, "Bump allocator creation with zero size should fail");
     if (bump) bump_free(bump);
 
+    bump = bump_new(arena, 10);
+    ASSERT(bump == NULL, "Bump creation with too small positive size should fail");
+    if (bump) bump_free(bump);
+
     bump = bump_new(arena, -100);
     ASSERT(bump == NULL, "Bump allocator creation with negative size should fail");
     if (bump) bump_free(bump);

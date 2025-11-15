@@ -766,7 +766,7 @@ void arena_free_nested(Arena *nested_arena) {
  */
 Bump *bump_new(Arena *parent_arena, ssize_t size) {
     if (!parent_arena) return NULL;
-    if (size <= 0 || (size_t)size < sizeof(Bump) + MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
+    if (size <= 0 || (size_t)size < MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
     Bump *bump = (Bump *)((char *)data - sizeof(Block));  // just cast allocated memory to Bump
