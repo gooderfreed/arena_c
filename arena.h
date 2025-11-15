@@ -646,6 +646,7 @@ static void arena_free_block_full(Arena *arena, void *data) {
  */
 void arena_free_block(void *data) {
     if (!data) return;
+    if ((uintptr_t)data % sizeof(void*) != 0) return;
     
     Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
     
