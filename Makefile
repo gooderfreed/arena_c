@@ -3,7 +3,7 @@
 CC ?= clang
 CFLAGS = -Wall -Wextra -std=c99 -g -I.
 DEBUG_FLAGS = -DDEBUG # Debug flag
-COV_FLAGS = -fprofile-arcs -ftest-coverage # Coverage flags
+COV_FLAGS = -O0 -fprofile-arcs -ftest-coverage # Coverage flags
 LDFLAGS_COV = -lgcov # Linker flag for coverage
 
 TEST_DIR = tests
@@ -123,8 +123,18 @@ coverage: clean build_coverage
 		echo "\nSome tests FAILED! Coverage data generation might be incomplete."; \
 		exit 1; \
 	else \
-		echo "\nCoverage data generated."; \
+		echo "\nCoverage data generated successfully from all tests."; \
 	fi
+	
+	@echo "\nGenerating final coverage.info for Codecov..."
+	lcov --capture --initial --directory . --output-file coverage_base.info
+	lcov --capture --directory . --output-file coverage_run.info
+	lcov --add-tracefile coverage_base.info --add-tracefile coverage_run.info --output-file coverage_total.info
+	lcov --remove coverage_total.info '/usr/*' '*/test_utils.h' --output-file coverage.info
+	rm -f coverage_base.info coverage_run.info coverage_total.info
+	
+	@echo "Successfully generated coverage.info file."
+
 
 # Cleaning binary files and coverage files
 clean:

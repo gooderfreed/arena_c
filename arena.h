@@ -675,7 +675,7 @@ Arena *arena_new_static(void *memory, ssize_t size) {
     block->size = 0;
     block->prev = NULL;
     set_is_free(block, true);
-    set_is_free(block, RED);
+    set_color(block, RED);
     block->left_free = NULL;
     block->right_free = NULL;
 
