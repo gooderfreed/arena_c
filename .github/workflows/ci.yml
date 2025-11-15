@@ -86,12 +86,15 @@ jobs:
 
       - name: Build for Coverage
         if: runner.os == 'Linux' && matrix.compiler == 'gcc'
-        run: make coverage CC=gcc
+        run: |
+          sudo apt-get update && sudo apt-get install -y lcov
+          make coverage CC=gcc
 
       - name: Upload coverage to Codecov
         if: runner.os == 'Linux' && matrix.compiler == 'gcc'
         uses: codecov/codecov-action@v4
         with:
+          files: ./coverage.info
           token: ${{ secrets.CODECOV_TOKEN }}
           config_file: ./.github/codecov.yml
           fail_ci_if_error: true

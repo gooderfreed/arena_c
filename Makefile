@@ -127,13 +127,16 @@ coverage: clean build_coverage
 	fi
 	
 	@echo "\nGenerating final coverage.info for Codecov..."
-	lcov --capture --initial --directory . --output-file coverage_base.info
-	lcov --capture --directory . --output-file coverage_run.info
-	lcov --add-tracefile coverage_base.info --add-tracefile coverage_run.info --output-file coverage_total.info
-	lcov --remove coverage_total.info '/usr/*' '*/test_utils.h' --output-file coverage.info
-	rm -f coverage_base.info coverage_run.info coverage_total.info
-	
-	@echo "Successfully generated coverage.info file."
+	lcov --capture --directory . --output-file coverage.info
+
+	@echo "Filtering system files from the report..."
+	lcov --remove coverage.info '/usr/*' '*/test_utils.h' --output-file coverage.info --ignore-errors unused
+
+	rm -f $(TEST_COV_BINS)
+	rm -f $(TEST_DIR)/*.gcda $(TEST_DIR)/*.gcno
+	@rm -f coverage_base.info coverage_run.info coverage_total.info
+
+	@echo "Successfully generated final coverage.info for Codecov."
 
 
 # Cleaning binary files and coverage files
@@ -142,6 +145,7 @@ clean:
 	rm -f $(TEST_DIR)/*.o $(TEST_DIR)/*.cov.o # Clean object files
 	rm -f *.gcov # Clean root gcov files if any generated manually
 	rm -f $(TEST_DIR)/*.gcda $(TEST_DIR)/*.gcno # Clean coverage data files
+	rm -f coverage.info
 
 # Show available tests
 list:

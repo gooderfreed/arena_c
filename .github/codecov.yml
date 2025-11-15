@@ -10,10 +10,10 @@ coverage:
       default:
         # Target coverage for the whole project
         target: 80%
-        # threshold: 0%
+        threshold: 0%
     patch:
       default:
         # Target coverage for the changes in a PR
         target: 80%
         # Do not allow coverage to decrease in PRs
-        # threshold: 0% 
+        threshold: 0% 
