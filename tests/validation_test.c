@@ -274,15 +274,11 @@ void test_calloc() {
     #endif
 
     TEST_PHASE("Calloc with overflow in size calculation");
-    size_t root_size = 1;
-    for (int i=0; i < sizeof(SSIZE_MAX) * 4; ++i) {
-        root_size *= 2;
-    }
-    ssize_t large_nmemb = root_size;
-    ssize_t large_size = (SSIZE_MAX / large_nmemb) + 1;
+    ssize_t large_nmemb = SIZE_MAX / 2;
+    ssize_t large_size = 3;
 
     void *p_overflow = arena_calloc(arena, large_nmemb, large_size);
-    ASSERT(p_overflow == NULL, "Calloc overflow protection should return NULL");
+    ASSERT(p_overflow == NULL, "Calloc with true overflow should return NULL");
 
     #ifdef DEBUG
     print_fancy(arena, 100);
