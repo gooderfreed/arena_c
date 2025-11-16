@@ -56,6 +56,7 @@ tests/stress_test_*
 tests/same_size_test_*
 tests/validation_test_*
 tests/bump_alloc_test_*
+tests/arena_nested_test_*
 
 # Coverage files
 *.gcno

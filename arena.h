@@ -1027,9 +1027,9 @@ void print_fancy(Arena *arena, size_t bar_size) {
         } else if (segment_type == '#') {
             PRINTF(T("\033[41m#\033[0m")); // Red for occupied blocks
         } else if (segment_type == ' ') {
-            PRINTF(T("\033[42m \033[0m")); // Green for free blocks
+            PRINTF(T("\033[42m=\033[0m")); // Green for free blocks
         } else if (segment_type == '-') {
-            PRINTF(T("\033[40m \033[0m")); // Black for empty space
+            PRINTF(T("\033[40m.\033[0m")); // Black for empty space
         }
     }
 

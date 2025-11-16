@@ -232,6 +232,92 @@ void test_freeing_invalid_blocks(void) {
     arena_free(arena);
 }
 
+void test_calloc() {
+    TEST_CASE("Arena Calloc Functionality");
+
+    // Create an arena
+    Arena *arena = arena_new_dynamic(1024);
+    ASSERT(arena != NULL, "Arena creation should succeed");
+    
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    TEST_PHASE("Calloc a block and verify zero-initialization");
+    size_t num_elements = 10;
+    size_t element_size = sizeof(int);
+    int *array = (int *)arena_calloc(arena, num_elements, element_size);
+    ASSERT(array != NULL, "Calloc should succeed");
+
+    // Verify all elements are zero
+    bool all_zero = true;
+    for (size_t i = 0; i < num_elements; i++) {
+        if (array[i] != 0) {
+            all_zero = false;
+            break;
+        }
+    }
+    ASSERT(all_zero, "All elements in calloced array should be zero");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    arena_free_block(array);
+    ASSERT(true, "Freeing calloced block should succeed");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    int *overflow_array = (int *)arena_calloc(arena, SIZE_MAX, sizeof(int));
+    ASSERT(overflow_array == NULL, "Calloc with overflow should return NULL");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    int *null_arena_array = (int *)arena_calloc(NULL, 10, sizeof(int));
+    ASSERT(null_arena_array == NULL, "Calloc with NULL arena should return NULL");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    int *zero_nmemb_array = (int *)arena_calloc(arena, 0, sizeof(int));
+    ASSERT(zero_nmemb_array == NULL, "Calloc with zero nmemb should return NULL");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    arena_free(arena);
+    arena = arena_new_dynamic(1000);
+
+    void *almost_full = arena_alloc(arena, 751); // Fill up the arena
+    ASSERT(almost_full != NULL, "Allocation to nearly fill arena should succeed");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    void *tail = arena_alloc(arena, 152);
+    ASSERT(tail != NULL, "Allocation to fill arena should succeed");
+
+    #ifdef DEBUG
+    print_fancy(arena, 100);
+    print_arena(arena);
+    #endif
+
+    arena_free(arena);
+}
 
 int main(void) {
     test_invalid_allocations();
@@ -240,6 +326,7 @@ int main(void) {
     test_full_arena_allocation();
     test_static_arena_creation();
     test_freeing_invalid_blocks();
+    test_calloc();
     
     print_test_summary();
     return tests_failed > 0 ? 1 : 0;
