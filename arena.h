@@ -744,10 +744,11 @@ Arena *arena_new_nested(Arena *parent_arena, ssize_t size) {
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
     Arena *arena = arena_new_static(data, size);  // Initialize the nested arena in the allocated memory
-    if (!arena) {
+    
+    if (!arena) { // LCOV_EXCL_STAR
         arena_free_block(data);   // Free the allocated memory if arena initialization fails (should not happen because size is already checked)
         return NULL;
-    }
+    } // LCOV_EXCL_STOP
     return arena;
 }
 
