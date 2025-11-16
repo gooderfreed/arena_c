@@ -12,29 +12,32 @@ extern "C" {
 
 
 #if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || defined(__cplusplus)
-    #include <assert.h>
-    #define ARENA_STATIC_ASSERT(cond, msg) static_assert(cond, #msg)
+#   include <assert.h>
+#   define ARENA_STATIC_ASSERT(cond, msg) static_assert(cond, #msg)
 #else
-    #define ARENA_STATIC_ASSERT_HELPER(cond, line) typedef char static_assertion_at_line_##line[(cond) ? 1 : -1]
-    #define ARENA_STATIC_ASSERT(cond, msg) ARENA_STATIC_ASSERT_HELPER(cond, __LINE__)
+#   define ARENA_STATIC_ASSERT_HELPER(cond, line) typedef char static_assertion_at_line_##line[(cond) ? 1 : -1]
+#   define ARENA_STATIC_ASSERT(cond, msg) ARENA_STATIC_ASSERT_HELPER(cond, __LINE__)
 #endif
 
+
 #ifdef _WIN32
-#include <BaseTsd.h> // SSIZE_T
-#define ssize_t SSIZE_T
+#   include <BaseTsd.h> // SSIZE_T
+#   define ssize_t SSIZE_T
 #else
-#include <sys/types.h>  // for ssize_t
+#   include <sys/types.h>  // for ssize_t
 #endif
 
 #ifndef MIN_BUFFER_SIZE
     // Default minimum buffer size for the arena.
-    #define MIN_BUFFER_SIZE 16
+#   define MIN_BUFFER_SIZE 16 
 #endif
+ARENA_STATIC_ASSERT(MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positive value to prevent creation of useless zero-sized free blocks.");
+
 
 #define DEFAULT_ALIGNMENT 16 // Default memory alignment
-
 ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT >= 4), Default_alignment_must_be_at_least_4);
 ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT > 0) && ((DEFAULT_ALIGNMENT & (DEFAULT_ALIGNMENT - 1)) == 0), Default_alignment_must_be_power_of_two);
+
 
 #define POINTER_MASK (~(uintptr_t)3)   // Mask to extract the pointer without flags
 

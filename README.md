@@ -7,7 +7,19 @@
 [![C Project CI](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml)
 <!-- There. Shiny enough? Now let's get back to actual work. -->
 
-**A fast, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
+**An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
+
+## TL;DR
+
+**What is it?** A high-performance, portable, header-only arena allocator for C.
+
+**Key Features:**
+*   **O(log n) Free List:** Uses a Left-Leaning Red-Black Tree for efficient block reuse and low fragmentation.
+*   **Minimal Overhead:** Only 32 bytes of metadata per block, achieved with advanced techniques like pointer tagging and binary-compatible struct layouts.
+*   **Bump Sub-allocators:** Includes high-speed bump allocators with support for guaranteed memory alignment (`bump_alloc_aligned`).
+*   **Safe by Design:** Features compile-time assertions for configuration and runtime checks for overflow and pointer validity.
+**Why use it?** To get fast, controlled, and reliable memory management in performance-critical applications like game engines, embedded systems, or network servers.
+**How to use it?** `#define ARENA_IMPLEMENTATION` in one `.c` file, then just `#include "arena.h"`.
 
 This library serves as the core memory allocator for the [Zen Framework](https://github.com/gooderfreed/Zen) - a lightweight, modular framework for building console applications in C. The arena allocator provides efficient memory management for Zen's component-oriented architecture and interactive features.
 
@@ -50,7 +62,7 @@ This library provides a flexible, high-performance alternative to standard `mall
 
 *   **Advanced Allocation Strategies:**
     *   **General-Purpose Allocation:** An efficient free-list allocator with O(log n) performance using an LLRB-Tree and block merging to combat fragmentation.
-    *   **Bump Sub-allocation:** Create zero-overhead bump allocators from any block for extremely fast, sequential allocations of small objects.
+    *   **Bump Sub-allocation:** Create zero-overhead bump allocators from any block for extremely fast, sequential allocations of small objects. Includes support for **guaranteed memory alignment** via `bump_alloc_aligned`, critical for SIMD or strict architectures.
     *   **Optimized Tail Allocation:** Most allocations at the end of the arena are O(1).
 
 *   **Memory Correctness & Efficiency:**
@@ -58,6 +70,7 @@ This library provides a flexible, high-performance alternative to standard `mall
     *   **Minimal Metadata Overhead:** Only **32 bytes** per `Arena` and `Block` header, achieved via pointer tagging and optimized struct layout.
 
 *   **Full Memory Control:**
+    *   **Safe Zero-Initialized Allocation:** `arena_calloc` provides a standard `calloc`-like interface for allocating zeroed memory, with built-in protection against integer overflow.
     *   **Individual Block Freeing:** `arena_free_block` allows freeing blocks in any order, just like a standard allocator.
     *   **Fast Arena Reset:** `arena_reset` deallocates all blocks within an arena in O(1) time without freeing the arena's own memory.
 
@@ -69,14 +82,39 @@ This library provides a flexible, high-performance alternative to standard `mall
     *   **Tunable `MIN_BUFFER_SIZE`:** Adjust the trade-off between memory fragmentation and overhead.
     *   **Permissive MIT License:** Use it in any project.
 
-## Important Considerations & Best Practices
+## Architectural Philosophy & Best Practices
 
-*   **Metadata Overhead:** The allocator is highly optimized to minimize metadata overhead. Each `Arena` and `Block` header consumes **32 bytes on 64-bit systems** and just **16 bytes on 32-bit systems**. While this is very low, allocating a huge number of tiny, individual objects directly from the main arena can still be inefficient.
-*   **Handling Many Small Objects:** For scenarios requiring a high volume of small, short-lived allocations, the recommended approach is to use a **Bump sub-allocator**. Create a single, larger block with `bump_new` and perform subsequent tiny allocations from it with near-zero overhead. This combines the flexibility of the main arena with the raw speed of a bump allocator.
-*   **Target Architectures:** The library is designed and tested for **32-bit and 64-bit architectures**. Its pointer tagging mechanism relies on memory alignment guarantees provided by these platforms. This design makes it **fundamentally incompatible** with typical 8-bit and 16-bit microcontroller architectures that do not guarantee the necessary pointer alignment.
-*   **No `realloc` Equivalent:** This library does not provide a direct equivalent of `realloc`. Resizing a block would require moving its contents, which goes against the core design principles of an arena where object locations are stable. Plan your memory requirements accordingly or implement resizing at the application level.
-*   **Memory Locality:** Allocating related objects within the same arena generally improves memory locality, as they are likely to be physically close in memory. This can lead to better cache performance compared to allocations scattered across the heap by a general-purpose allocator.
+Memory allocation strategies always involve a fundamental trade-off between three desirable properties: **cache locality**, **pointer stability**, and the ability to **resize** allocations. You can only pick two.
 
+This library makes a deliberate architectural choice to prioritize **locality and stability**, which are often the most critical factors for high-performance systems like games, servers, and embedded applications. This core design choice is visualized in the classic data structure triangle:
+
+![Tradeoffs](.github/assets/design_tradeoffs.png)
+
+Understanding this philosophy is key to using the allocator effectively. The decision to forgo resizing in favor of cache locality and stable pointers leads to the following design principles and best practices:
+
+---
+
+### Principle 1: Pointers are Stable (No `realloc`)
+
+Once memory is allocated from the arena, its address will **never** change during its lifetime. This pointer stability is a powerful feature, as it allows you to safely store pointers to allocated objects without worrying about them becoming invalidated.
+
+*   **No `realloc` Equivalent:** Consequently, the library does not provide a direct equivalent of `realloc`. Resizing a block in-place is not possible without potentially moving subsequent blocks, which would violate the stable pointer guarantee. Plan your memory requirements in advance or implement resizing at the application level by allocating a new, larger block and copying the data.
+
+### Principle 2: Memory is Local (Performance by Default)
+
+The arena allocates memory sequentially from large, contiguous chunks. This dramatically improves cache performance compared to standard `malloc`, which can scatter allocations across the heap.
+
+*   **Embrace Memory Locality:** To maximize this benefit, allocate objects that are used together close in time to each other. This will naturally place them close in memory, reducing cache misses.
+
+*   **Handling Many Small Objects with Bump Allocators:** While locality is high, allocating thousands of tiny, individual objects directly from the main arena can be inefficient due to metadata overhead. For these scenarios, the **Bump sub-allocator** is the perfect tool. Allocate a single, larger block with `bump_new` and then perform your small allocations from it with virtually zero overhead.
+
+### Technical Constraints & Considerations
+
+The implementation techniques used to achieve these goals introduce a few important constraints:
+
+*   **Metadata Overhead:** The allocator is highly optimized to minimize metadata. Each `Block` header consumes **32 bytes on 64-bit systems** and just **16 bytes on 32-bit systems.** This is a fixed cost per allocation from the main free list.
+
+*   **Target Architectures:** The pointer tagging mechanism, which helps minimize metadata size, relies on memory alignment guarantees common to modern CPUs. This makes the library ideal for **32-bit and 64-bit architectures** but fundamentally incompatible with typical 8-bit and 16-bit microcontrollers that do not guarantee the necessary pointer alignment.
 ## Getting Started
 
 ### 1. Include the Header File
@@ -185,9 +223,16 @@ if (my_point) {
     my_point->y = 20;
 }
 
+Point *point_array = (Point *)arena_calloc(arena, 10, sizeof(Point));
+if (point_array) {
+    // Memory is guaranteed to be zero-initialized.
+    // point_array[0].x is 0 without needing memset.
+}
+
 // Free individual blocks when no longer needed (optional, but allows memory reuse within the arena)
-arena_free_block(arena, my_int);
-arena_free_block(arena, my_point);
+arena_free_block(my_int);
+arena_free_block(my_point);
+arena_free_block(point_array)
 
 // Allocate memory again, potentially reusing freed blocks
 int *my_int_reused = (int *)arena_alloc(arena, sizeof(int));
@@ -265,6 +310,40 @@ void spawn_particles(Arena *main_arena) {
 }
 ```
 
+#### Using `bump_alloc_aligned` for Performance-Critical Tasks
+
+When you need to guarantee that memory is aligned to a specific boundary (e.g., for SIMD instructions or compatibility with hardware that faults on unaligned access), use `bump_alloc_aligned`.
+
+```c
+#include <immintrin.h> // For SSE types
+
+void process_simd_data(Arena *main_arena) {
+    Bump *mem = bump_new(main_arena, 4096);
+    if (!mem) return;
+
+    // A standard allocation might leave the offset unaligned
+    bump_alloc(mem, 1);
+
+    // Now, allocate a SIMD vector with GUARANTEED 16-byte alignment
+    __m128i *vector = (__m128i *)bump_alloc_aligned(mem, sizeof(__m128i), 16);
+    if (vector) {
+        // This pointer is safe to use with SSE instructions that require 16-byte alignment
+        *vector = _mm_setzero_si128();
+    }
+    
+    bump_free(mem);
+}
+```
+
+#### Choosing between `bump_alloc` and `bump_alloc_aligned`
+
+For many common use cases, such as allocating arrays of standard structures, `bump_alloc` is perfectly sufficient. The C compiler automatically aligns struct members and ensures that `sizeof(struct)` is padded to a multiple of its required alignment. This means that consecutive allocations of the same struct type will naturally remain aligned.
+However, `bump_alloc_aligned` becomes essential in specific scenarios:
+
+*   **Strict Hardware Requirements:** Some architectures, particularly certain ARM processors, will crash when accessing unaligned data. `bump_alloc_aligned` provides the necessary guarantee.
+*   **SIMD Vectorization:** Instruction sets like SSE and AVX operate on wide data vectors (128-bit, 256-bit, or 512-bit registers). For these instructions to be correct and performant, the memory addresses of the data they operate on must often be aligned to corresponding boundaries, typically **16, 32, or 64 bytes.** Using `bump_alloc_aligned` is the correct way to acquire such memory.
+*   **Mixed-Size Allocations:** If you are mixing allocations of various sizes (e.g., a `char` followed by a `double`), the natural alignment can be broken. `bump_alloc_aligned` restores the required alignment for subsequent critical allocations.
+
 ### 6. Free Memory (Arena-Level Deallocation)
 
 This allocator offers **multiple deallocation strategies**. You can free individual blocks using `arena_free_block` for fine-grained control, or deallocate all memory within the arena at once for maximum speed using:
@@ -283,19 +362,42 @@ arena_reset(arena); // Resets the arena, marking all blocks as free and ready fo
 
 ### 7. Debugging with `print_arena` and `print_fancy`
 
-To enable debugging output, compile your code with the `DEBUG` macro defined:
+To aid in debugging and understanding the internal state of your memory, the library provides powerful visualization tools. To enable them, compile your code with the `DEBUG` macro defined:
 
 ```bash
 gcc -DDEBUG your_code.c arena_impl.c -o your_program
 ```
 
-Then, you can call `print_arena(arena)` or `print_fancy(arena, 100)` to print detailed information about the arena's state to the console, which can be helpful for debugging memory allocation issues and understanding arena behavior.
+Then you can then call `print_arena(arena)` for a detailed text-based dump of all blocks, or use the `print_fancy(arena, bar_size)` function to get a colorized, graphical representation of the arena's memory layout directly in your terminal:
 
-### Customization
+![Arena Memory Visualization](.github/assets/visualization.png)
 
-**`MIN_BUFFER_SIZE` Macro:**
+## Customization
 
-You can adjust the `MIN_BUFFER_SIZE` macro in `arena_allocator.h` to control the minimum size of free blocks that are kept after splitting.  Experiment with different values to optimize for your specific use case and balance memory usage with allocation speed.
+You can customize the behavior of the allocator by defining the following macros **before** including `arena.h` in the file where `ARENA_IMPLEMENTATION` is defined.
+
+### `DEFAULT_ALIGNMENT` Macro
+
+Defines the default alignment for all memory blocks allocated by `arena_alloc`. The default value is `16` bytes. This ensures compatibility with most architectures and provides good performance for general-purpose use. You can override it to suit specific needs:
+
+```c
+// Set default alignment to 32 bytes for AVX instructions
+#define DEFAULT_ALIGNMENT 32
+
+#define ARENA_IMPLEMENTATION
+#include "arena.h"
+```
+
+**Important:**
+*   The value must be a **power of two**.
+*   The value must be at least `4` (or `8` on 64-bit systems) to support the library's internal pointer tagging. A `static_assert` within the header will enforce this at compile time.
+
+### `MIN_BUFFER_SIZE` Macro
+
+Controls the minimum size of a memory fragment that is considered for reuse after a block is split. The default value is `16`. Increasing this value may reduce fragmentation by avoiding tiny free blocks, at the cost of some memory overhead. Decreasing it allows for finer-grained reuse.
+
+**Important:**
+*   The value must be a **positive integer (`> 0`)**. Setting it to zero is disallowed to prevent the creation of useless, empty free blocks in the allocator's free list. A `static_assert` will enforce this at compile time.
 
 ## Build Status & Portability
 
@@ -326,7 +428,10 @@ The library is continuously tested across a wide range of operating systems, com
 | `x86_32` (32-bit)     | Little     | ![x86_32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20x86_32%20%7C%20GCC&label=x86_32&logo=intel&logoColor=white)                                             |
 | `AArch64` (64-bit)    | Little     | ![ARM64 Modern Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM64%20(Modern,%20Forgiving%20Alignment)%20%7C%20GCC&label=aarch64&logo=arm&logoColor=white)     |
 | `ARMv7` (32-bit)      | Little     | ![ARM32 Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20ARM32%20(armv7)%20%7C%20GCC&label=armv7&logo=arm&logoColor=white)                                        |
-| `Big Endian (s390x)`  | Big        | ![Big Endian Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20Big%20Endian%20(s390x)%20%7C%20GCC&label=big-endian&logo=ibm&logoColor=white)                       |
+| `Big Endian` (s390x)  | Big        | ![Big Endian Status](https://img.shields.io/github/actions/workflow/status/gooderfreed/arena_c/ci.yml?job=Ubuntu%20%7C%20Big%20Endian%20(s390x)%20%7C%20GCC&label=big-endian&logo=ibm&logoColor=white)                       |
+
+## Why All This?
+*idk*, i was bored
 
 ## License
 
