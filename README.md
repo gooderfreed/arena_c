@@ -1,13 +1,16 @@
 <div>
   <img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
   <div style="padding-top: 10px;">
-  <ul style="list-style: none; padding: 0; margin: 0;">
-    <summary>
-    <h1 style="margin-bottom: 5px; margin-top: 0;">
-        Header-Only Arena-Based Memory Allocator in C
-    </h1>
-    </summary>
-  </ul>
+    <div id="toc">
+      <ul style="list-style: none; padding: 0; margin-botton: 5px;">
+        <summary>
+          <h1>
+            Header-Only Arena-Based Memory Allocator in C
+          </h1>
+        </summary>
+      </ul>
+    </div>
+  </div>
 </div>
 
 <!-- ### **Header-Only Arena-Based Memory Allocator in C** -->
