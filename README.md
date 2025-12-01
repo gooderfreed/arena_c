@@ -2,9 +2,9 @@
   <img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
 
   <div style="padding-top: 10px; overflow: hidden;">
-    <h1 style="margin-bottom: 0; margin-top: 0; border-bottom: none;">
+    <span style="font-size: 2em; font-weight: bold; display: block; margin-bottom: 5px;">
       Header-Only Arena-Based Memory Allocator in C
-    </h1>
+    </span>
     <!-- Look ma, I added badges! Now my toy is a "serious project"! -->
     <p style="margin-top: 5px; margin-bottom: 5px;">
       <a href="https://opensource.org/licenses/MIT">
