@@ -1,6 +1,16 @@
-<img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
+<div>
+  <img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
+  <div style="padding-top: 10px;">
+  <ul style="list-style: none; padding: 0; margin: 0;">
+    <summary>
+    <h1 style="margin-bottom: 5px; margin-top: 0;">
+        Header-Only Arena-Based Memory Allocator in C
+    </h1>
+    </summary>
+  </ul>
+</div>
 
-### **Header-Only Arena-Based Memory Allocator in C**
+<!-- ### **Header-Only Arena-Based Memory Allocator in C** -->
 
 <!-- Look ma, I added badges! Now my toy is a "serious project"! -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -8,6 +18,7 @@
 [![codecov](https://codecov.io/gh/gooderfreed/arena_c/graph/badge.svg?token=QJ3YND0OBF)](https://codecov.io/gh/gooderfreed/arena_c)
 [![Arena CI](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml)
 <!-- There. Shiny enough? Now let's get back to actual work. -->
+<br/>
 
 **An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
 
