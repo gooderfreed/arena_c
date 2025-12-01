@@ -1,7 +1,7 @@
 <div>
   <img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
 
-  <div style="padding-top: 10px;">
+  <div style="padding-top: 10px; overflow: hidden;">
     <h1 style="margin-bottom: 0; margin-top: 0;">
       Header-Only Arena-Based Memory Allocator in C
     </h1>
@@ -21,11 +21,10 @@
       </a>
     </p>
     <!-- There. Shiny enough? Now let's get back to actual work. -->
-    <p>
-      <b>An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.</b>
-    </p>
   </div>
 </div>
+
+**An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
 
 ## TL;DR
 
