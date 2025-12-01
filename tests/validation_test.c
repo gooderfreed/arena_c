@@ -101,7 +101,7 @@ void test_boundary_conditions(void) {
     TEST_CASE("Boundary Conditions");
 
     TEST_PHASE("Arena size just above minimum");
-    size_t min_size = sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE;
+    size_t min_size = sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE;
     Arena *min_size_arena = arena_new_dynamic(min_size);
     ASSERT(min_size_arena != NULL, "Arena with minimum valid size should succeed");
     arena_free(min_size_arena);
@@ -152,7 +152,7 @@ void test_full_arena_allocation(void) {
 
     // Create an arena with minimal valid size
     // Size = Arena metadata + one Block metadata + minimal usable buffer
-    size_t min_valid_size = sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE;
+    size_t min_valid_size = sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE;
     Arena *arena = arena_new_dynamic(min_valid_size);
     ASSERT(arena != NULL, "Arena creation with minimal size should succeed");
     #ifdef DEBUG
@@ -162,7 +162,7 @@ void test_full_arena_allocation(void) {
 
     TEST_PHASE("Allocate block filling the entire initial tail");
     // Try to allocate exactly the minimum buffer size available
-    void *first_block = arena_alloc(arena, MIN_BUFFER_SIZE - 5);
+    void *first_block = arena_alloc(arena, ARENA_MIN_BUFFER_SIZE - 5);
     ASSERT(first_block != NULL, "Allocation of the first block should succeed");
     #ifdef DEBUG
     print_fancy(arena, 100);
@@ -323,6 +323,59 @@ void test_calloc() {
     arena_free(arena);
 }
 
+void test_arena_reset_zero(void) {
+    TEST_CASE("Arena Reset Zero");
+
+    TEST_PHASE("Setup and dirtying memory");
+    size_t arena_size = 4096;
+    Arena *arena = arena_new_dynamic(arena_size);
+    ASSERT(arena != NULL, "Dynamic arena creation should succeed");
+
+    size_t data_size = 256;
+    unsigned char *ptr1 = (unsigned char *)arena_alloc(arena, data_size);
+    ASSERT(ptr1 != NULL, "Allocation 1 should succeed");
+    
+    memset(ptr1, 0xAA, data_size);
+    ASSERT(ptr1[0] == 0xAA && ptr1[data_size - 1] == 0xAA, "Memory should be writable");
+
+    unsigned char *ptr2 = (unsigned char *)arena_alloc(arena, data_size);
+    ASSERT(ptr2 != NULL, "Allocation 2 should succeed");
+    memset(ptr2, 0xBB, data_size);
+
+    TEST_PHASE("Execute reset_zero");
+    arena_reset_zero(arena);
+    ASSERT(arena->free_size_in_tail > 0, "Arena should have free space after reset_zero");
+    ASSERT(arena->free_size_in_tail == arena_size - sizeof(Arena) - sizeof(Block), "Arena free size should be reset to initial state");
+
+    TEST_PHASE("Verify memory zeroing");
+
+    int is_zero_1 = 1;
+    for (size_t i = 0; i < data_size; i++) {
+        if (ptr1[i] != 0) {
+            is_zero_1 = 0;
+            break;
+        }
+    }
+    ASSERT(is_zero_1, "Memory at ptr1 should be strictly zeroed");
+
+    int is_zero_2 = 1;
+    for (size_t i = 0; i < data_size; i++) {
+        if (ptr2[i] != 0) {
+            is_zero_2 = 0;
+            break;
+        }
+    }
+    ASSERT(is_zero_2, "Memory at ptr2 (tail) should be strictly zeroed");
+
+    TEST_PHASE("Verify arena state reset");
+    unsigned char *new_ptr = (unsigned char *)arena_alloc(arena, data_size);
+    ASSERT(new_ptr != NULL, "Re-allocation after reset should succeed");
+    ASSERT(new_ptr == ptr1, "Allocator should reset tail to the beginning");
+    ASSERT(new_ptr[0] == 0, "New allocation should point to the zeroed memory");
+
+    arena_free(arena);
+}
+
 int main(void) {
     test_invalid_allocations();
     test_invalid_arena_creation();
@@ -331,6 +384,7 @@ int main(void) {
     test_static_arena_creation();
     test_freeing_invalid_blocks();
     test_calloc();
+    test_arena_reset_zero();
     
     print_test_summary();
     return tests_failed > 0 ? 1 : 0;

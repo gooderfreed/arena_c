@@ -1,13 +1,31 @@
-# Header-Only Arena-Based Memory Allocator in C
+<div>
+  <img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
 
-<!-- Look ma, I added badges! Now my toy is a "serious project"! -->
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CodeFactor](https://www.codefactor.io/repository/github/gooderfreed/arena_c/badge)](https://www.codefactor.io/repository/github/gooderfreed/arena_c)
-[![codecov](https://codecov.io/gh/gooderfreed/arena_c/graph/badge.svg?token=QJ3YND0OBF)](https://codecov.io/gh/gooderfreed/arena_c)
-[![C Project CI](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml)
-<!-- There. Shiny enough? Now let's get back to actual work. -->
-
-**An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
+  <div style="padding-top: 10px;">
+    <h1 style="margin-bottom: 0; margin-top: 0;">
+      Header-Only Arena-Based Memory Allocator in C
+    </h1>
+    <!-- Look ma, I added badges! Now my toy is a "serious project"! -->
+    <p style="margin-top: 15px; margin-bottom: 5px;">
+      <a href="https://opensource.org/licenses/MIT">
+        <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+      </a>
+      <a href="https://www.codefactor.io/repository/github/gooderfreed/arena_c">
+        <img src="https://www.codefactor.io/repository/github/gooderfreed/arena_c/badge" alt="CodeFactor">
+      </a>
+      <a href="https://codecov.io/gh/gooderfreed/arena_c">
+        <img src="https://codecov.io/gh/gooderfreed/arena_c/graph/badge.svg?token=QJ3YND0OBF" alt="codecov">
+      </a>
+      <a href="https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml">
+        <img src="https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg" alt="Arena CI">
+      </a>
+    </p>
+    <!-- There. Shiny enough? Now let's get back to actual work. -->
+    <p>
+      <b>An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.</b>
+    </p>
+  </div>
+</div>
 
 ## TL;DR
 
@@ -18,10 +36,12 @@
 *   **Minimal Overhead:** Only 32 bytes of metadata per block, achieved with advanced techniques like pointer tagging and binary-compatible struct layouts.
 *   **Bump Sub-allocators:** Includes high-speed bump allocators with support for guaranteed memory alignment (`bump_alloc_aligned`).
 *   **Safe by Design:** Features compile-time assertions for configuration and runtime checks for overflow and pointer validity.
+
 **Why use it?** To get fast, controlled, and reliable memory management in performance-critical applications like game engines, embedded systems, or network servers.
+
 **How to use it?** `#define ARENA_IMPLEMENTATION` in one `.c` file, then just `#include "arena.h"`.
 
-This library serves as the core memory allocator for the [Zen Framework](https://github.com/gooderfreed/Zen) - a lightweight, modular framework for building console applications in C. The arena allocator provides efficient memory management for Zen's component-oriented architecture and interactive features.
+This library serves as the core memory manager for the [Zen Framework](https://github.com/gooderfreed/Zen) - a lightweight, modular framework for building console applications in C. The arena allocator provides efficient memory management for Zen's component-oriented architecture and interactive features.
 
 ## Overview
 
@@ -372,32 +392,43 @@ Then you can then call `print_arena(arena)` for a detailed text-based dump of al
 
 ![Arena Memory Visualization](.github/assets/visualization.png)
 
-## Customization
+## Configuration
 
-You can customize the behavior of the allocator by defining the following macros **before** including `arena.h` in the file where `ARENA_IMPLEMENTATION` is defined.
+You can customize the internal behavior of the allocator by defining the following macros **before** including `arena.h`.
 
-### `DEFAULT_ALIGNMENT` Macro
+| Macro | Default | Description |
+| :--- | :--- | :--- |
+| **`ARENA_DEFAULT_ALIGNMENT`**    | `16`    | Memory alignment for allocations. Must be a power of two and at least `sizeof(void*)`. Default is optimized for SIMD (SSE/Neon). |
+| **`ARENA_MIN_BUFFER_SIZE`**      | `16`    | Minimum size of a free block split. Larger values reduce fragmentation overhead but may waste small amounts of space. |
+| **`ARENA_POISONING`**            | *Auto*  | Enables memory scrubbing (filling freed memory with a pattern).<br>• **Enabled** by default in `DEBUG` builds.<br>• **Disabled** by default in Release builds.<br>Define `ARENA_POISONING` to force enable, or `ARENA_NO_POISONING` to force disable. |
+| **`ARENA_POISON_BYTE`**          | `0xDD`  | The byte pattern used to scrub freed memory (`0xDD` = Dead Data). Useful for catching Use-After-Free bugs. |
+| **`ARENA_NO_MALLOC`**            | *Unset* | If defined, disables standard library dependencies (`malloc`, `free`). Use this for embedded systems or custom memory backends. |
+| **`ARENA_STATIC_ASSERT`**        | *Auto*  | Internal macro for compile-time checks. You can override this if your environment does not support C11 `static_assert` or C++ `static_assert`. |
 
-Defines the default alignment for all memory blocks allocated by `arena_alloc`. The default value is `16` bytes. This ensures compatibility with most architectures and provides good performance for general-purpose use. You can override it to suit specific needs:
+### Configuration Examples
+
+**1. Paranoid Debugging (Catching memory bugs)**
+Force-enable poisoning with a custom pattern to catch corruption or uninitialized reads.
 
 ```c
-// Set default alignment to 32 bytes for AVX instructions
-#define DEFAULT_ALIGNMENT 32
+#define ARENA_POISONING             // Force enable poisoning even in Release
+#define ARENA_POISON_BYTE 0xCC      // Use 0xCC pattern (int 3 breakpoint style)
 
 #define ARENA_IMPLEMENTATION
 #include "arena.h"
 ```
 
-**Important:**
-*   The value must be a **power of two**.
-*   The value must be at least `4` (or `8` on 64-bit systems) to support the library's internal pointer tagging. A `static_assert` within the header will enforce this at compile time.
+**2. High-Performance / Embedded (Minimal overhead)**
+Disable all safety checks and external dependencies for maximum speed and portability.
 
-### `MIN_BUFFER_SIZE` Macro
+```c
+#define ARENA_NO_POISONING          // Disable scrubbing for speed
+#define ARENA_NO_MALLOC             // We will provide memory manually (static)
+#define ARENA_DEFAULT_ALIGNMENT 64  // Align for AVX-512
 
-Controls the minimum size of a memory fragment that is considered for reuse after a block is split. The default value is `16`. Increasing this value may reduce fragmentation by avoiding tiny free blocks, at the cost of some memory overhead. Decreasing it allows for finer-grained reuse.
-
-**Important:**
-*   The value must be a **positive integer (`> 0`)**. Setting it to zero is disallowed to prevent the creation of useless, empty free blocks in the allocator's free list. A `static_assert` will enforce this at compile time.
+#define ARENA_IMPLEMENTATION
+#include "arena.h"
+```
 
 ## Build Status & Portability
 

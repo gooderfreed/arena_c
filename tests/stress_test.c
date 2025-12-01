@@ -319,7 +319,7 @@ void test_block_merging(void) {
 
     // Try to allocate a block that's slightly smaller than the merged space
     // This should create a new free block from the remaining space
-    size_t smaller_size = merged_size - sizeof(Block) - MIN_BUFFER_SIZE;
+    size_t smaller_size = merged_size - sizeof(Block) - ARENA_MIN_BUFFER_SIZE;
     void *smaller_block = arena_alloc(arena, smaller_size);
     ASSERT(smaller_block != NULL, "Should successfully allocate smaller block");
 
@@ -330,13 +330,13 @@ void test_block_merging(void) {
 
     // Verify that a new free block was created
     ASSERT(arena->free_blocks != NULL, "Should have a free block from remaining space");
-    ASSERT(arena->free_blocks->size == MIN_BUFFER_SIZE, "Free block should have exactly MIN_BUFFER_SIZE");
+    ASSERT(arena->free_blocks->size == ARENA_MIN_BUFFER_SIZE, "Free block should have exactly MIN_BUFFER_SIZE");
 
     // Free the smaller block
     arena_free_block(smaller_block);
 
     // Try to allocate a block that's just 1 byte too large to cause fragmentation
-    size_t no_split_size = merged_size - sizeof(Block) - MIN_BUFFER_SIZE + 1;
+    size_t no_split_size = merged_size - sizeof(Block) - ARENA_MIN_BUFFER_SIZE + 1;
     void *no_split_block = arena_alloc(arena, no_split_size);
     ASSERT(no_split_block != NULL, "Should successfully allocate block without splitting");
     
@@ -380,7 +380,6 @@ void test_llrb_detach_scenarios(void) {
     print_fancy(arena_root, 100);
     #endif // DEBUG
     ASSERT(arena_root->free_blocks != NULL, "[Detach Root] Free list should contain block A");
-    printf("%zu\n", arena_root->free_blocks->size);
     ASSERT(arena_root->free_blocks->size == 112, "[Detach Root] Root of free list should be block A");
 
     // Allocate the same size again (100). This should find block A and detach it.

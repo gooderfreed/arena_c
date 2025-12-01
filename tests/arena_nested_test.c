@@ -46,7 +46,7 @@ void test_nested_creation(void) {
     ASSERT(true, "Freeing allocation from nested arena should succeed");
 
     TEST_PHASE("Free Nested Arena");
-    arena_free_nested(nested_arena);
+    arena_free(nested_arena);
     ASSERT(true, "Nested arena should be freed successfully");
     ASSERT(parent_arena->free_size_in_tail == parent_arena_size - sizeof(Arena) - sizeof(Block), "Parent arena free size should be restored after freeing nested arena");
     
@@ -73,15 +73,15 @@ void test_nested_creation(void) {
     ASSERT(true, "Parent arena should be freed successfully");
 
     TEST_PHASE("Free NULL Nested Arena");
-    arena_free_nested(NULL); // Should not crash
+    arena_free(NULL); // Should not crash
     ASSERT(true, "Freeing NULL nested arena should not crash");
 
     TEST_PHASE("Free Already Freed Nested Arena");
-    arena_free_nested(nested_arena); // Should not crash
+    arena_free(nested_arena); // Should not crash
     ASSERT(true, "Freeing already freed nested arena should not crash");
     
     TEST_PHASE("Nested Arena creation in too small Parent Arena");
-    size_t small_parent_size = sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE + 10; // Just above minimum
+    size_t small_parent_size = sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE + 10; // Just above minimum
     Arena *small_parent = arena_new_dynamic(small_parent_size);
     ASSERT(small_parent != NULL, "Small parent arena should be created successfully");
 

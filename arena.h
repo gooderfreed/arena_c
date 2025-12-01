@@ -27,16 +27,30 @@ extern "C" {
 #   include <sys/types.h>  // for ssize_t
 #endif
 
-#ifndef MIN_BUFFER_SIZE
+
+#ifndef ARENA_MIN_BUFFER_SIZE
     // Default minimum buffer size for the arena.
-#   define MIN_BUFFER_SIZE 16 
+#   define ARENA_MIN_BUFFER_SIZE 16 
 #endif
-ARENA_STATIC_ASSERT(MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positive value to prevent creation of useless zero-sized free blocks.");
+ARENA_STATIC_ASSERT(ARENA_MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positive value to prevent creation of useless zero-sized free blocks.");
 
 
-#define DEFAULT_ALIGNMENT 16 // Default memory alignment
-ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT >= 4), Default_alignment_must_be_at_least_4);
-ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT > 0) && ((DEFAULT_ALIGNMENT & (DEFAULT_ALIGNMENT - 1)) == 0), Default_alignment_must_be_power_of_two);
+#define ARENA_DEFAULT_ALIGNMENT 16 // Default memory alignment
+ARENA_STATIC_ASSERT((ARENA_DEFAULT_ALIGNMENT >= 4), Default_alignment_must_be_at_least_4);
+ARENA_STATIC_ASSERT((ARENA_DEFAULT_ALIGNMENT > 0) && ((ARENA_DEFAULT_ALIGNMENT & (ARENA_DEFAULT_ALIGNMENT - 1)) == 0), Default_alignment_must_be_power_of_two);
+
+
+#ifndef ARENA_POISON_BYTE
+#   define ARENA_POISON_BYTE 0xDD
+#endif
+
+#if defined(ARENA_NO_POISONING)
+#   if defined(ARENA_POISONING)
+#       undef ARENA_POISONING
+#   endif
+#elif defined(DEBUG) && !defined(ARENA_POISONING)
+#   define ARENA_POISONING
+#endif
 
 
 #define POINTER_MASK (~(uintptr_t)3)   // Mask to extract the pointer without flags
@@ -45,6 +59,7 @@ ARENA_STATIC_ASSERT((DEFAULT_ALIGNMENT > 0) && ((DEFAULT_ALIGNMENT & (DEFAULT_AL
 #define FLAG_COLOR   ((uintptr_t)2)    // Flag to indicate the color of a block in LLRB tree
 
 #define ARENA_IS_DYNAMIC ((uintptr_t)1) // Flag to indicate if the arena is dynamic
+#define ARENA_IS_NESTED  ((uintptr_t)2) // Flag to indicate if the arena is nested
 
 #define RED false
 #define BLACK true
@@ -109,24 +124,23 @@ struct Arena {
 
 #ifndef ARENA_NO_MALLOC
 Arena *arena_new_dynamic(ssize_t size);
-void arena_free(Arena *arena);
 #endif // ARENA_NO_MALLOC
 
 Arena *arena_new_static(void *memory, ssize_t size);
+Arena *arena_new_nested(Arena *parent_arena, ssize_t size);
 void arena_reset(Arena *arena);
+void arena_reset_zero(Arena *arena);
+void arena_free(Arena *arena);
 
 void *arena_alloc(Arena *arena, ssize_t size);
 void *arena_calloc(Arena *arena, ssize_t nmemb, ssize_t size);
-
 void arena_free_block(void *data);
-
-Arena *arena_new_nested(Arena *parent_arena, ssize_t size);
-void  arena_free_nested(Arena *nested_arena);
 
 Bump  *bump_new(Arena *parent_arena, ssize_t size);
 void  *bump_alloc(Bump *bump, ssize_t size);
 void  bump_reset(Bump *bump);
 void  bump_free(Bump *bump);
+
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -171,6 +185,14 @@ static inline bool get_is_arena_dynamic(Arena *arena) {
 }
 
 /*
+ * Get is arena nested
+ * Retrieves the is_nested flag of the arena pointer
+ */
+static inline bool get_is_arena_nested(Arena *arena) {
+    return ((uintptr_t)arena->tail & ARENA_IS_NESTED);
+}
+
+/*
  * Set is free
  * Updates the is_free flag of the block pointer
  */
@@ -211,6 +233,21 @@ static inline void set_is_arena_dynamic(Arena *arena, bool is_dynamic) {
     }
     else {
         int_ptr &= ~ARENA_IS_DYNAMIC;
+    }
+    arena->tail = (Block *)int_ptr;
+}
+
+/*
+ * Set is arena nested
+ * Updates the is_nested flag of the arena pointer
+ */
+static inline void set_is_arena_nested(Arena *arena, bool is_nested) {
+    uintptr_t int_ptr = (uintptr_t)(arena->tail);
+    if (is_nested) {
+        int_ptr |= ARENA_IS_NESTED;
+    }
+    else {
+        int_ptr &= ~ARENA_IS_NESTED;
     }
     arena->tail = (Block *)int_ptr;
 }
@@ -496,10 +533,10 @@ static void *alloc_in_tail(Arena *arena, size_t size) {
     set_is_free(block, false);
     arena->free_size_in_tail -= size;
     block->arena = arena;
-    block->magic = (void*)0xDEADBEEF;
+    block->magic = (void*)((uintptr_t)0xDEADBEEF ^ (uintptr_t)block_data(block));
 
     // create new block
-    if (arena->free_size_in_tail >= sizeof(Block) + MIN_BUFFER_SIZE) {
+    if (arena->free_size_in_tail >= sizeof(Block) + ARENA_MIN_BUFFER_SIZE) {
         Block *new_block = create_empty_block(block);
         override_prev(new_block, block);
         // update arena
@@ -526,8 +563,8 @@ static void *alloc_in_free_blocks(Arena *arena, size_t size) {
         detach(&arena->free_blocks, best);
         set_is_free(best, false);
         best->arena = arena;
-        best->magic = (void*)0xDEADBEEF;
-        if (best->size >= size + sizeof(Block) + MIN_BUFFER_SIZE) {
+        best->magic = (void*)((uintptr_t)0xDEADBEEF ^ (uintptr_t)block_data(best));
+        if (best->size >= size + sizeof(Block) + ARENA_MIN_BUFFER_SIZE) {
             Block *block_after = next_block(arena, best);
             size_t new_block_size = best->size - size - sizeof(Block);
             best->size = size;
@@ -558,12 +595,12 @@ static void *alloc_in_free_blocks(Arena *arena, size_t size) {
 void *arena_alloc(Arena *arena, ssize_t size) {
     if (size <= 0 || arena == NULL || (size_t)size > arena->capacity) return NULL;
     // check if there is enough space in the free blocks
-    void *result = alloc_in_free_blocks(arena, align_up((size_t)size, DEFAULT_ALIGNMENT));
+    void *result = alloc_in_free_blocks(arena, align_up((size_t)size, ARENA_DEFAULT_ALIGNMENT));
     if (result) return result;
 
     // check if arena has enough space in the end for aligned size
-    if (arena->free_size_in_tail >= align_up((size_t)size, DEFAULT_ALIGNMENT)) {
-        return alloc_in_tail(arena, align_up((size_t)size, DEFAULT_ALIGNMENT));
+    if (arena->free_size_in_tail >= align_up((size_t)size, ARENA_DEFAULT_ALIGNMENT)) {
+        return alloc_in_tail(arena, align_up((size_t)size, ARENA_DEFAULT_ALIGNMENT));
     }
 
     // check if arena has enough space in the literal end of memory (alignment for next allocation is not required)
@@ -653,12 +690,16 @@ void arena_free_block(void *data) {
     
     Block *block = (Block *)((void *)((char *)data - sizeof(Block)));
     
-    if (block->magic != (void*)0xDEADBEEF) {
+    if (((uintptr_t)block->magic ^ (uintptr_t)data) != (uintptr_t)0xDEADBEEF) {
         return;
     }
 
     Arena *arena = block->arena;
     if (!arena ||(char *)data < (char *)arena + sizeof(Arena) || (char *)data > (char *)arena + sizeof(Arena) + arena->capacity) return;
+
+    #ifdef ARENA_POISONING
+    memset(data, ARENA_POISON_BYTE, block->size);
+    #endif
 
     arena_free_block_full(arena, data);
 }
@@ -669,7 +710,7 @@ void arena_free_block(void *data) {
  * Returns NULL if the provided size is too small, memory is NULL or size is negative
  */
 Arena *arena_new_static(void *memory, ssize_t size) {
-    if (!memory || size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
+    if (!memory || size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE) return NULL;
 
     Arena *arena = (Arena *)memory;
     arena->capacity = (size_t)size - sizeof(Arena);
@@ -698,7 +739,7 @@ Arena *arena_new_static(void *memory, ssize_t size) {
  * Returns NULL if the requested size is too small or size is negative
  */
 Arena *arena_new_dynamic(ssize_t size) {
-    if (size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;
+    if (size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE) return NULL;
     void *data = malloc((size_t)size);
     if (!data) return NULL;
     Arena *arena = arena_new_static(data, size);
@@ -707,6 +748,7 @@ Arena *arena_new_dynamic(ssize_t size) {
 
     return arena;
 }
+#endif // ARENA_NO_MALLOC
 
 /*
 * Free a dynamic arena
@@ -714,11 +756,18 @@ Arena *arena_new_dynamic(ssize_t size) {
 */
 void arena_free(Arena *arena) {
     if (!arena) return;
+
+    if (get_is_arena_nested(arena)) {
+        arena_free_block((void *)arena);
+        return;
+    }
+
+    #ifndef ARENA_NO_MALLOC
     if (get_is_arena_dynamic(arena)) {
         free(arena);
     }
+    #endif // ARENA_NO_MALLOC
 }
-#endif // ARENA_NO_MALLOC
 
 /*
  * Reset the arena
@@ -737,13 +786,23 @@ void arena_reset(Arena *arena) {
 }
 
 /*
+ * Reset the arena and set its tail to zero
+ * clears the arens`s blocks and reserts it ti the initial state with zeroing all the memory
+ */
+void arena_reset_zero(Arena *arena) {
+    if (!arena) return;
+    arena_reset(arena); // Reset arena
+    memset(block_data(get_pointer(arena->tail)), 0, arena->free_size_in_tail); // Set tail to zero
+}
+
+/*
  * Create a nested arena
  * Allocates memory for a nested arena from a parent arena and initializes it
  * Returns NULL if the parent arena is NULL, requested size is too small, or allocation fails
  */
 Arena *arena_new_nested(Arena *parent_arena, ssize_t size) {
     if (!parent_arena) return NULL;
-    if (size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
+    if (size <= 0 || (size_t)size < sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
     Arena *arena = arena_new_static(data, size);  // Initialize the nested arena in the allocated memory
@@ -752,16 +811,10 @@ Arena *arena_new_nested(Arena *parent_arena, ssize_t size) {
         arena_free_block(data);   // Free the allocated memory if arena initialization fails (should not happen because size is already checked)
         return NULL;
     } // LCOV_EXCL_STOP
-    return arena;
-}
 
-/*
- * Free a nested arena
- * Releases memory for a nested arena back to its parent arena
- */
-void arena_free_nested(Arena *nested_arena) {
-    if (!nested_arena) return;
-    arena_free_block((void *)nested_arena);
+    set_is_arena_nested(arena, true); // Mark the arena as nested
+
+    return arena;
 }
 
 /*
@@ -771,7 +824,7 @@ void arena_free_nested(Arena *nested_arena) {
  */
 Bump *bump_new(Arena *parent_arena, ssize_t size) {
     if (!parent_arena) return NULL;
-    if (size <= 0 || (size_t)size < MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
+    if (size <= 0 || (size_t)size < ARENA_MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
     Bump *bump = (Bump *)((char *)data - sizeof(Block));  // just cast allocated memory to Bump
