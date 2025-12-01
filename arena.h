@@ -762,6 +762,14 @@ void arena_free(Arena *arena) {
         return;
     }
 
+    #if defined(ARENA_POISONING) // Skip poisoning check if poisoning is disabled
+    size_t poison_check;
+    memset(&poison_check, ARENA_POISON_BYTE, sizeof(size_t));
+    if (arena->capacity == poison_check) {  // Check if arena is already poisoned via comparing arena capacity to poison pattern
+        return;
+    }
+    #endif
+
     #ifndef ARENA_NO_MALLOC
     if (get_is_arena_dynamic(arena)) {
         free(arena);
