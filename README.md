@@ -1,28 +1,3 @@
-<!-- <div>
-  <img src=".github/assets/logo.png" align="left" width="150" style="margin-right: 20px" alt="arena_c logo" />
-  <div style="padding-top: 10px;">
-    <div id="toc">
-      <ul style="list-style: none; padding: 0; margin-botton: 5px;">
-        <summary>
-          <h1>
-            Header-Only Arena-Based Memory Allocator in C
-          </h1>
-        </summary>
-      </ul>
-    </div>
-  </div>
-</div> -->
-
-<!-- Look ma, I added badges! Now my toy is a "serious project"! -->
-<!-- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![CodeFactor](https://www.codefactor.io/repository/github/gooderfreed/arena_c/badge)](https://www.codefactor.io/repository/github/gooderfreed/arena_c)
-[![codecov](https://codecov.io/gh/gooderfreed/arena_c/graph/badge.svg?token=QJ3YND0OBF)](https://codecov.io/gh/gooderfreed/arena_c)
-[![Arena CI](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg)](https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml) -->
-<!-- There. Shiny enough? Now let's get back to actual work. -->
-<!-- <br/> -->
-
-<!-- **An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.** -->
-
 <table>
   <tr>
     <td width="150" valign="middle">
@@ -36,16 +11,21 @@
           </summary>
         </ul>
       </div>
-      <p style="margin-top: 10px; margin-bottom: 10px;">
+      <!-- Look ma, I added badges! Now my toy is a "serious project"! -->
+      <p style="margin-top: 10px; margin-bottom: 0;">
         <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
         <a href="https://www.codefactor.io/repository/github/gooderfreed/arena_c"><img src="https://www.codefactor.io/repository/github/gooderfreed/arena_c/badge" alt="CodeFactor"></a>
         <a href="https://codecov.io/gh/gooderfreed/arena_c"><img src="https://codecov.io/gh/gooderfreed/arena_c/graph/badge.svg?token=QJ3YND0OBF" alt="codecov"></a>
         <a href="https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml"><img src="https://github.com/gooderfreed/arena_c/actions/workflows/ci.yml/badge.svg" alt="Arena CI"></a>
       </p>
-      <p><b>An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.</b></p>
+      <!-- There. Shiny enough? Now let's get back to actual work. -->
     </td>
   </tr>
 </table>
+
+<br/>
+
+**An efficient, portable, and easy-to-use header-only arena-based memory allocator library written in pure C.**
 
 ## TL;DR
 
