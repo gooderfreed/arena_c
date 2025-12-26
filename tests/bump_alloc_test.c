@@ -235,7 +235,9 @@ void test_bump_trim(void) {
 
         Bump *bump = bump_new(arena, 64);
         
-        bump_alloc(bump, 16);
+        ssize_t alloc_size = 64 - sizeof(Block) - ARENA_DEFAULT_ALIGNMENT;
+
+        bump_alloc(bump, alloc_size);
         
         bump_trim(bump);
         
@@ -244,7 +246,7 @@ void test_bump_trim(void) {
         print_fancy(bump->arena, 101);
         #endif
 
-        ASSERT(bump->capacity == 16, "Trim should work on exact boundary condition");
+        ASSERT(bump->capacity == alloc_size, "Trim should work on exact boundary condition");
         
         arena_free(arena);
     }
