@@ -88,8 +88,9 @@ void test_nested_creation(void) {
     size_t too_large_nested_size = small_parent_size; // Too large to fit nested arena
     Arena *too_large_nested = arena_new_nested(small_parent, too_large_nested_size);
     ASSERT(too_large_nested == NULL, "Creating nested arena larger than parent arena should fail");
-    arena_free(small_parent);
     
+    set_is_arena_nested(small_parent, false); 
+    arena_free(small_parent);
 }
 
 int main(void) {

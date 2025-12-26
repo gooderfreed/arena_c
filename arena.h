@@ -97,7 +97,7 @@ struct Block {
  */
 struct Bump {
     union {
-        Block *block_representation; // Block representation for compatibility
+        Block block_representation; // Block representation for compatibility
         struct {
             size_t capacity;         // Total capacity of the bump allocator
             Block *prev;             // Pointer to the previous block in the global list, need for compatibility with block struct layout
@@ -136,10 +136,11 @@ void *arena_alloc(Arena *arena, ssize_t size);
 void *arena_calloc(Arena *arena, ssize_t nmemb, ssize_t size);
 void arena_free_block(void *data);
 
-Bump  *bump_new(Arena *parent_arena, ssize_t size);
-void  *bump_alloc(Bump *bump, ssize_t size);
-void  bump_reset(Bump *bump);
-void  bump_free(Bump *bump);
+Bump *bump_new(Arena *parent_arena, ssize_t size);
+void *bump_alloc(Bump *bump, ssize_t size);
+void bump_trim(Bump *bump);
+void bump_reset(Bump *bump);
+void bump_free(Bump *bump);
 
 
 #ifdef DEBUG
@@ -264,16 +265,16 @@ static inline Block *override_address(Block *source, Block *target) {
  * Override previous block pointer
  * Safely updates the previous block pointer while preserving flags
  */
-static inline void override_prev(Block *block, Block *new) {
-    block->prev = override_address(block->prev, new);
+static inline void override_prev(Block *block, Block *new_block) {
+    block->prev = override_address(block->prev, new_block);
 }
 
 /*
  * Override arena tail pointer
  * Safely updates the arena's tail pointer while preserving flags
  */
-static inline void override_arena_tail(Arena *arena, Block *new) {
-    arena->tail = override_address(arena->tail, new);
+static inline void override_arena_tail(Arena *arena, Block *new_block) {
+    arena->tail = override_address(arena->tail, new_block);
 }
 
 /*
@@ -886,6 +887,38 @@ void *bump_alloc_aligned(Bump *bump, ssize_t size, size_t alignment) {
 void bump_reset(Bump *bump) {
     if (!bump) return;
     bump->offset = sizeof(Bump);
+}
+
+/*
+ * Trim a bump allocator
+ * Trims the bump allocator and return free part back to arena
+ */
+void bump_trim(Bump *bump) {
+    if (!bump) return;
+
+    uintptr_t current_ptr = (uintptr_t)bump + bump->offset;
+    uintptr_t aligned_ptr = align_up(current_ptr, ARENA_DEFAULT_ALIGNMENT);
+    uintptr_t aligned_size = aligned_ptr - (uintptr_t)bump;
+
+    if (aligned_size >= bump->capacity) return;  // Check if bump dont have any extra space to trim
+
+    if ((bump->capacity - aligned_size) < ARENA_MIN_BUFFER_SIZE) return;  // Check if bump have have any valid empty space 
+    
+    Block *block_after = next_block(bump->arena, &(bump->block_representation));   // get next physical neighbor of the block 
+
+    size_t new_block_size = bump->capacity - aligned_size; // calculate size of new block
+    bump->capacity = aligned_size - sizeof(Bump);          // update size of bump
+
+    Block *new_block = create_empty_block(&(bump->block_representation));  // create new block after the *updated* bump 
+    new_block->size = new_block_size;  // applying calculated size to created block
+
+    // link new block to it physical neighbors
+    if (block_after) {
+        override_prev(block_after, new_block); 
+    }
+    override_prev(new_block, &(bump->block_representation));
+
+    arena_free_block_full(bump->arena, (void *)((char *)new_block + sizeof(Block)));  // send block to free procedure it will be merged with tail\next_bloxk or added to llrb tree
 }
 
 /*

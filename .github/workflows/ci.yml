@@ -204,3 +204,18 @@ jobs:
               echo '--- Building and running tests on ARM32 ---' && \
               make tests_full CC=gcc \
             "
+  build-and-test-C-stds:
+    name: Build & Test (${{ matrix.os }}, ${{ matrix.std }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        std: [c99, c11, c17, c23]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Compile and Test
+        run: |
+          make tests STD_C=${{ matrix.std }}
