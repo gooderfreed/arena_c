@@ -333,6 +333,8 @@ void test_bump_trim(void) {
 }
 
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0); 
+    
     test_bump_creation();
     test_bump_allocation();
     test_bump_hard_usage();

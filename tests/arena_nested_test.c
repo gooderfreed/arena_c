@@ -95,8 +95,9 @@ void test_nested_creation(void) {
 }
 
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0); 
+    
     test_nested_creation();
-
 
     // Print test summary
     print_test_summary();

@@ -446,6 +446,8 @@ void test_llrb_detach_scenarios(void) {
 }
 
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0); 
+
     test_complex_allocation_pattern();
     test_block_merging();
     test_llrb_detach_scenarios();

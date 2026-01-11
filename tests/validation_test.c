@@ -213,8 +213,15 @@ void test_freeing_invalid_blocks(void) {
     ASSERT(arena != NULL, "Arena creation should succeed");
 
     TEST_CASE("Freeing a pointer not allocated by the arena");
-    int stack_var = 42;
-    arena_free_block(&stack_var); // Should not crash
+    struct {
+        uintptr_t fake_backlink;
+        int data;
+    } stack_obj;
+
+    stack_obj.fake_backlink = (uintptr_t)&stack_obj.data ^ 1;
+    stack_obj.data = 42;
+
+    arena_free_block(&stack_obj.data); // Should safe return
     ASSERT(true, "Freeing stack variable should not crash");
 
     TEST_CASE("Freeing a pointer with valid magic number");

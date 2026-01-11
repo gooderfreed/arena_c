@@ -105,6 +105,8 @@ void test_same_size_allocation(void) {
 }
 
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0); 
+    
     test_same_size_allocation();
     
     print_test_summary();
