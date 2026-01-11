@@ -516,7 +516,7 @@ void test_alignment_alloc(void) {
         ASSERT((uintptr_t)p3 % 128 == 0, "Allocation should be properly 128-byte aligned");
 
         Block *new_first_block = arena_get_first_block(arena);
-        ASSERT(new_first_block != p3 - sizeof(Block), "First block pointer MUST change (split happened)");
+        ASSERT(new_first_block != (Block *)((char *)p3 - sizeof(Block)), "First block pointer MUST change (split happened)");
         ASSERT(count_blocks_in_arena(arena) == 3, "Split should happen, two blocks allocated in arena");
     }
 

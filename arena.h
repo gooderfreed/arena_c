@@ -218,7 +218,7 @@ static inline size_t get_alignment(const Block *block) {
     ARENA_ASSERT((block != NULL) && "Internal Error: 'get_alignment' called on NULL block");
 
     size_t exponent = (block->size_and_alignment & ALIGNMENT_MASK) + MIN_EXPONENT; // Extract exponent and adjust by MIN_EXPONENT
-    size_t alignment = 1 << (exponent); // Calculate alignment as power of two
+    size_t alignment = (size_t)1 << (exponent); // Calculate alignment as power of two
 
     return alignment;
 }
@@ -921,7 +921,7 @@ static inline Block *create_next_block(Arena *arena, Block *prev_block) {
     ARENA_ASSERT((arena != NULL)      && "Internal Error: 'create_next_block' called on NULL arena");
     ARENA_ASSERT((prev_block != NULL) && "Internal Error: 'create_next_block' called on NULL prev_block");
     
-    Block *next_block;
+    Block *next_block = NULL;
     if (is_block_within_arena(arena, prev_block)) {
         next_block = next_block_unsafe(prev_block);
         
@@ -1592,7 +1592,7 @@ void arena_free_block(void *data) {
     if (!data) return;
     if ((uintptr_t)data % sizeof(uintptr_t) != 0) return;
 
-    Block *block;
+    Block *block = NULL;
 
     /*
      * Retrieve block metadata from user data pointer
@@ -1862,7 +1862,7 @@ Arena *arena_new_nested_custom(Arena *parent_arena, size_t size, size_t alignmen
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
 
-    Block *block;
+    Block *block = NULL;
 
     uintptr_t *spot_before_user_data = (uintptr_t *)((char *)data - sizeof(uintptr_t));
     uintptr_t check = *spot_before_user_data ^ (uintptr_t)data;
@@ -1903,7 +1903,7 @@ Bump *bump_new(Arena *parent_arena, ssize_t size) {
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
 
-    Block *block;
+    Block *block = NULL;
 
     uintptr_t *spot_before_user_data = (uintptr_t *)((char *)data - sizeof(uintptr_t));
     uintptr_t check = *spot_before_user_data ^ (uintptr_t)data;
