@@ -3,11 +3,12 @@
 #include "test_utils.h"
 
 void test_nested_creation(void) {
-    TEST_PHASE("Nested Bump Allocator Creation");
+    TEST_PHASE("Nested Arena Creation");
 
     TEST_CASE("Create Parent Arena");
     size_t parent_arena_size = 4096;
     Arena *parent_arena = arena_new_dynamic(parent_arena_size);
+    size_t parent_arena_size_in_tail = free_size_in_tail(parent_arena);
     ASSERT(parent_arena != NULL, "Parent arena should be created successfully");
 
     #ifdef DEBUG
@@ -48,7 +49,7 @@ void test_nested_creation(void) {
     TEST_CASE("Free Nested Arena");
     arena_free(nested_arena);
     ASSERT(true, "Nested arena should be freed successfully");
-    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size - sizeof(Block), "Parent arena free size should be restored after freeing nested arena");
+    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size_in_tail, "Parent arena free size should be restored after freeing nested arena");
     
     #ifdef DEBUG
     print_arena(parent_arena);
@@ -58,15 +59,15 @@ void test_nested_creation(void) {
     TEST_CASE("Invalid Nested Arena Creation");
     Arena *invalid_nested1 = arena_new_nested(NULL, nested_arena_size);
     ASSERT(invalid_nested1 == NULL, "Creating nested arena with NULL parent should fail");
-    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size - sizeof(Block), "Parent arena free size should remain unchanged after failed nested arena creation");
+    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size_in_tail, "Parent arena free size should remain unchanged after failed nested arena creation");
 
     Arena *invalid_nested2 = arena_new_nested(parent_arena, 0);
     ASSERT(invalid_nested2 == NULL, "Creating nested arena with zero size should fail");
-    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size - sizeof(Block), "Parent arena free size should remain unchanged after failed nested arena creation");
+    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size_in_tail, "Parent arena free size should remain unchanged after failed nested arena creation");
 
     Arena *invalid_nested3 = arena_new_nested(parent_arena, -100);
     ASSERT(invalid_nested3 == NULL, "Creating nested arena with negative size should fail");
-    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size - sizeof(Block), "Parent arena free size should remain unchanged after failed nested arena creation");
+    ASSERT(free_size_in_tail(parent_arena) == parent_arena_size_in_tail, "Parent arena free size should remain unchanged after failed nested arena creation");
 
     TEST_CASE("Free Parent Arena");
     arena_free(parent_arena);

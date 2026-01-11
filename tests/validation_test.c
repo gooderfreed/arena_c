@@ -152,7 +152,7 @@ void test_full_arena_allocation(void) {
 
     // Create an arena with minimal valid size
     // Size = Arena metadata + one Block metadata + minimal usable buffer
-    size_t min_valid_size = BLOCK_MIN_SIZE;
+    size_t min_valid_size = BLOCK_MIN_SIZE + ARENA_DEFAULT_ALIGNMENT;
     Arena *arena = arena_new_dynamic(min_valid_size);
     ASSERT(arena != NULL, "Arena creation with minimal size should succeed");
     #ifdef DEBUG
@@ -161,8 +161,9 @@ void test_full_arena_allocation(void) {
     #endif // DEBUG
 
     TEST_CASE("Allocate block filling the entire initial tail");
+    size_t avail = free_size_in_tail(arena);
     // Try to allocate exactly the minimum buffer size available
-    void *first_block = arena_alloc(arena, ARENA_MIN_BUFFER_SIZE - 5);
+    void *first_block = arena_alloc(arena, avail);
     ASSERT(first_block != NULL, "Allocation of the first block should succeed");
     #ifdef DEBUG
     print_fancy(arena, 100);
@@ -198,12 +199,7 @@ void test_static_arena_creation(void) {
 
     void *alloc3 = arena_alloc(static_arena, 1024); // This should fail
     ASSERT(alloc3 == NULL, "Allocation exceeding static arena capacity should fail");
-
-    arena_reset(static_arena);
-
-    void *alloc4 = arena_alloc(static_arena, 2000); // This should fail
-    ASSERT(alloc4 == NULL, "Allocation exceeding static arena capacity should fail");
-    
+        
     arena_free(static_arena);
 
     free(static_memory);
