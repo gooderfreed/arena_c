@@ -35,7 +35,7 @@ void test_invalid_allocations(void) {
 
     TEST_CASE("Free invalid pointer");
     Block fake_block = {0};
-    fake_block.as.occupied.magic = 0xFF; // 0xFF is an invalid magic number
+    fake_block.as.occupied.magic = (uintptr_t)(&fake_block + 1) ^ (uintptr_t)1;  // 0xFF is an invalid magic number
     void *fake_data = (char*)&fake_block + sizeof(Block);
     arena_free_block(fake_data); // Should not crash
     ASSERT(true, "Free invalid pointer should not crash");
@@ -199,7 +199,7 @@ void test_static_arena_creation(void) {
 
     void *alloc3 = arena_alloc(static_arena, 1024); // This should fail
     ASSERT(alloc3 == NULL, "Allocation exceeding static arena capacity should fail");
-        
+
     arena_free(static_arena);
 
     free(static_memory);
@@ -574,6 +574,8 @@ void test_alignment_alloc(void) {
 
 
 int main(void) {
+    setvbuf(stdout, NULL, _IONBF, 0); 
+
     test_invalid_allocations();
     test_invalid_arena_creation();
     test_boundary_conditions();
