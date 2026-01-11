@@ -71,10 +71,10 @@ ARENA_STATIC_ASSERT(ARENA_MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positi
 #define MIN_ALIGNMENT ((size_t)sizeof(uintptr_t))
 
 #define ALIGNMENT_MASK  ((uintptr_t)7)
-#define SIZE_MASK       ((uintptr_t)~7)
+#define SIZE_MASK       (~(uintptr_t)7)
 #define IS_FREE_FLAG    ((uintptr_t)1)
 #define COLOR_FLAG      ((uintptr_t)2) 
-#define PREV_MASK       ((uintptr_t)~3)
+#define PREV_MASK       (~(uintptr_t)3)
 #define IS_DYNAMIC_FLAG ((uintptr_t)1)
 #define IS_NESTED_FLAG  ((uintptr_t)2)
 #define TAIL_MASK       ((uintptr_t)~3)
