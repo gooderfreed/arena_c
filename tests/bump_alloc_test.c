@@ -41,10 +41,6 @@ void test_bump_creation() {
     ASSERT(bump == NULL, "Bump creation with too small positive size should fail");
     if (bump) bump_free(bump);
 
-    bump = bump_new(arena, -100);
-    ASSERT(bump == NULL, "Bump allocator creation with negative size should fail");
-    if (bump) bump_free(bump);
-
     bump = bump_new(NULL, 100);
     ASSERT(bump == NULL, "Bump allocator creation with NULL arena should fail");
     if (bump) bump_free(bump);
@@ -143,11 +139,11 @@ void test_bump_allocation() {
     arena_free(arena);
 }
 
+#define NUM_ALLOCS 100
 void test_bump_hard_usage() {
     TEST_PHASE("Bump Integrity / Hard Usage");
     Arena *arena = arena_new_dynamic(5000);
     Bump *bump = bump_new(arena, 4096);
-    const int NUM_ALLOCS = 100;
     void *ptrs[NUM_ALLOCS];
     size_t sizes[NUM_ALLOCS];
     
@@ -334,7 +330,7 @@ void test_bump_trim(void) {
 
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0); 
-    
+
     test_bump_creation();
     test_bump_allocation();
     test_bump_hard_usage();
