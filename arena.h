@@ -11,6 +11,9 @@ extern "C" {
 #include <stdint.h>
 #include <string.h>
 
+#if defined(_MSVC_VER)
+#include <intrin.h>
+#endif
 
 #if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L) || defined(__cplusplus)
 #   include <assert.h>
@@ -60,7 +63,7 @@ ARENA_STATIC_ASSERT(ARENA_MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positi
     #define MIN_EXPONENT ( \
         (sizeof(uintptr_t) == 4) ? 2 : \
         (sizeof(uintptr_t) == 8) ? 3 : \
-        4
+        4                              \
     )
 #endif
 
@@ -193,6 +196,12 @@ static inline size_t min_exponent_of(size_t num) {
         return __builtin_ctz(num);
     #elif defined(_MSVC_VER)
         unsigned long index;
+        #if defined(_M_X64) || defined(_M_ARM64)
+            _BitScanForward64(&index, num);
+        #else
+            _BitScanForward(&index, num);
+        #endif
+        return index;
     #else
         size_t s = num;
         size_t zeros = 0;
