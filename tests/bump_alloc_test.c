@@ -23,9 +23,9 @@ void test_bump_creation() {
     print_fancy(arena, 100);
     #endif
 
-    ASSERT(bump->capacity == bump_size, "Bump allocator capacity should match requested size");
-    ASSERT(bump->arena == arena, "Bump allocator should reference the parent arena");
-    ASSERT(bump->offset == sizeof(Bump), "Bump allocator offset should be initialized correctly");
+    ASSERT(bump_get_capacity(bump) == bump_size, "Bump allocator capacity should match requested size");
+    ASSERT(bump_get_arena(bump) == arena, "Bump allocator should reference the parent arena");
+    ASSERT(bump_get_offset(bump) == sizeof(Bump), "Bump allocator offset should be initialized correctly");
 
     bump_free(bump);
     #ifdef DEBUG
@@ -99,8 +99,8 @@ void test_bump_allocation() {
     
     TEST_PHASE("Reset Bump Allocator");
     bump_reset(bump);
-    ASSERT(bump->offset == sizeof(Bump), "Bump allocator offset should be reset correctly");
-    ASSERT(bump->capacity == bump_size, "Bump allocator capacity should remain unchanged after reset");
+    ASSERT(bump_get_offset(bump) == sizeof(Bump), "Bump allocator offset should be reset correctly");
+    ASSERT(bump_get_capacity(bump) == bump_size, "Bump allocator capacity should remain unchanged after reset");
 
     TEST_PHASE("Allocate aligned memory from Bump Allocator");
     size_t alloc_size4 = 50;
@@ -184,15 +184,15 @@ void test_bump_trim(void) {
     {
         Arena *arena = arena_new_dynamic(4096);
         Bump *bump = bump_new(arena, 100); 
-        printf("capacity: %zu\n", bump->capacity);
+        printf("capacity: %zu\n", bump_get_capacity(bump));
 
         bump_alloc(bump, 90);
-        printf("free space after alloc: %zu\n", bump->capacity - bump->offset + sizeof(Bump));
+        printf("free space after alloc: %zu\n", bump_get_capacity(bump) - bump_get_offset(bump) + sizeof(Bump));
         
-        size_t old_capacity = bump->capacity;
+        size_t old_capacity = bump_get_capacity(bump);
         bump_trim(bump);
         
-        ASSERT(bump->capacity == old_capacity, "Capacity should not change if remaining space is too small");
+        ASSERT(bump_get_capacity(bump) == old_capacity, "Capacity should not change if remaining space is too small");
         
         arena_free(arena);
     }
@@ -203,26 +203,26 @@ void test_bump_trim(void) {
         Arena *arena = arena_new_dynamic(2048);
         Bump *bump = bump_new(arena, 1024);
         #ifdef DEBUG
-        print_arena(bump->arena);
-        print_fancy(bump->arena, 101);
+        print_arena(bump_get_arena(bump));
+        print_fancy(bump_get_arena(bump), 101);
         #endif
 
         void *ptr = bump_alloc(bump, 64);
-        void *old_tail = arena->tail;
+        void *old_tail = arena_get_tail(arena);
         
         bump_trim(bump);
 
         #ifdef DEBUG
-        print_arena(bump->arena);
-        print_fancy(bump->arena, 101);
+        print_arena(bump_get_arena(bump));
+        print_fancy(bump_get_arena(bump), 101);
         #endif
         
         size_t aligned_ptr = align_up((uintptr_t)ptr + 64, ARENA_DEFAULT_ALIGNMENT);
         size_t expected_cap = aligned_ptr - (uintptr_t)bump - sizeof(Bump);
         
-        ASSERT(bump->capacity == expected_cap, "Capacity should shrink to fit used data");
+        ASSERT(bump_get_capacity(bump) == expected_cap, "Capacity should shrink to fit used data");
         
-        Block *arena_tail = get_pointer(arena->tail);
+        Block *arena_tail = arena_get_tail(arena);
         ASSERT((void*)arena_tail < (void*)old_tail, "Arena tail should point to the trimmed bump");
         
         arena_free(arena);
@@ -235,18 +235,18 @@ void test_bump_trim(void) {
 
         Bump *bump = bump_new(arena, 64);
         
-        ssize_t alloc_size = 64 - sizeof(Block) - ARENA_DEFAULT_ALIGNMENT;
+        size_t alloc_size = 64 - sizeof(Block) - ARENA_DEFAULT_ALIGNMENT;
 
         bump_alloc(bump, alloc_size);
         
         bump_trim(bump);
         
         #ifdef DEBUG
-        print_arena(bump->arena);
-        print_fancy(bump->arena, 101);
+        print_arena(bump_get_arena(bump));
+        print_fancy(bump_get_arena(bump), 101);
         #endif
 
-        ASSERT(bump->capacity == alloc_size, "Trim should work on exact boundary condition");
+        ASSERT(bump_get_capacity(bump) == alloc_size, "Trim should work on exact boundary condition");
         
         arena_free(arena);
     }
@@ -266,16 +266,16 @@ void test_bump_trim(void) {
         bump_trim(bump);
 
         #ifdef DEBUG
-        print_arena(bump->arena);
-        print_fancy(bump->arena, 101);
+        print_arena(bump_get_arena(bump));
+        print_fancy(bump_get_arena(bump), 101);
         #endif
         
-        Block *new_free = get_pointer(block_c->prev);
+        Block *new_free = get_prev(block_c);
         ASSERT(new_free != (Block*)bump, "New block should be inserted between Bump and C");
         ASSERT(get_is_free(new_free), "Inserted block should be free");
-        ASSERT(new_free->size > 0, "Inserted block should have size");
+        ASSERT(get_size(new_free) > 0, "Inserted block should have size");
         
-        ASSERT(get_pointer(new_free->prev) == (Block*)bump, "New free block should point back to bump");
+        ASSERT(get_prev(new_free) == (Block*)bump, "New free block should point back to bump");
         
         arena_free(arena);
     }
@@ -292,20 +292,20 @@ void test_bump_trim(void) {
         
         arena_free_block(data_b);
         Block *block_b = BLOCK_FROM_DATA(data_b);
-        size_t old_b_size = block_b->size;
+        size_t old_b_size = get_size(block_b);
         
         bump_alloc(bump, 64);
         
         bump_trim(bump);
 
         #ifdef DEBUG
-        print_arena(bump->arena);
-        print_fancy(bump->arena, 101);
+        print_arena(bump_get_arena(bump));
+        print_fancy(bump_get_arena(bump), 101);
         #endif
         
         Block *next_after_bump = next_block(arena, (Block*)bump);
         ASSERT(get_is_free(next_after_bump), "Next block should be free");
-        ASSERT(next_after_bump->size > old_b_size, "Free block should have grown due to merge");
+        ASSERT(get_size(next_after_bump) > old_b_size, "Free block should have grown due to merge");
         
         arena_free_block(data_c);
         arena_free(arena);
@@ -322,11 +322,11 @@ void test_bump_trim(void) {
         bump_trim(bump);
 
         #ifdef DEBUG
-        print_arena(bump->arena);
-        print_fancy(bump->arena, 101);
+        print_arena(bump_get_arena(bump));
+        print_fancy(bump_get_arena(bump), 101);
         #endif
 
-        ASSERT(bump->capacity == 16, "Trim should align capacity up");
+        ASSERT(bump_get_capacity(bump) == 16, "Trim should align capacity up");
         
         arena_free(arena);
     }

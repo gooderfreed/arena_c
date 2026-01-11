@@ -37,7 +37,7 @@ void test_same_size_allocation(void) {
     print_arena(arena);
     #endif
 
-    size_t after_initial_tail = arena->free_size_in_tail;
+    size_t after_initial_tail = free_size_in_tail(arena);
     
     TEST_PHASE("Free every second block");
     // Free every second block
@@ -86,9 +86,9 @@ void test_same_size_allocation(void) {
     #endif
 
     // Verify final state
-    ASSERT(arena->free_size_in_tail == after_initial_tail,
+    ASSERT(free_size_in_tail(arena) == after_initial_tail,
            "Tail size should be the same as after initial allocations");
-    ASSERT(arena->free_blocks == NULL, "Free block should be NULL");
+    ASSERT(arena_get_free_blocks(arena) == NULL, "Free block should be NULL");
 
     
     // Free all remaining blocks

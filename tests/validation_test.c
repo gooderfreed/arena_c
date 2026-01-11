@@ -4,55 +4,55 @@
 #include <limits.h>
 #include <stdint.h>
 
-#include <limits.h> // This is guaranteed to exist by the C standard
+#include <limits.h>
 
 #ifndef SSIZE_MAX
 #define SSIZE_MAX (SIZE_MAX / 2)
 #endif
 
 void test_invalid_allocations(void) {
-    TEST_CASE("Invalid Allocation Scenarios");
+    TEST_PHASE("Invalid Allocation Scenarios");
 
     // Create an arena
     Arena *arena = arena_new_dynamic(1024);
     ASSERT(arena != NULL, "Arena creation should succeed");
 
-    TEST_PHASE("Zero size allocation");
+    TEST_CASE("Zero size allocation");
     void *zero_size = arena_alloc(arena, 0);
     ASSERT(zero_size == NULL, "Zero size allocation should return NULL");
 
-    TEST_PHASE("Negative size allocation");
+    TEST_CASE("Negative size allocation");
     void *negative_size = arena_alloc(arena, -1);
     ASSERT(negative_size == NULL, "Negative size allocation should return NULL");
 
-    TEST_PHASE("NULL arena allocation");
+    TEST_CASE("NULL arena allocation");
     void *null_arena = arena_alloc(NULL, 32);
     ASSERT(null_arena == NULL, "Allocation with NULL arena should return NULL");
 
-    TEST_PHASE("Free NULL pointer");
+    TEST_CASE("Free NULL pointer");
     arena_free_block(NULL); // Should not crash
     ASSERT(true, "Free NULL pointer should not crash");
 
-    TEST_PHASE("Free invalid pointer");
+    TEST_CASE("Free invalid pointer");
     Block fake_block = {0};
-    fake_block.magic = (void *)0xFF; // 0xFF is an invalid magic number
+    fake_block.as.occupied.magic = 0xFF; // 0xFF is an invalid magic number
     void *fake_data = (char*)&fake_block + sizeof(Block);
     arena_free_block(fake_data); // Should not crash
     ASSERT(true, "Free invalid pointer should not crash");
     
-    TEST_PHASE("Free pointer from different arena");
+    TEST_CASE("Free pointer from different arena");
     Arena *another_arena = arena_new_dynamic(1024);
     void *ptr = arena_alloc(another_arena, 32);
     arena_free_block(ptr); // Should not crash
     arena_free(another_arena);
 
-    TEST_PHASE("Free already freed pointer");
+    TEST_CASE("Free already freed pointer");
     void *ptr2 = arena_alloc(arena, 32);
     arena_free_block(ptr2);
     arena_free_block(ptr2); // Should not crash
     ASSERT(true, "Free already freed pointer should not crash");
 
-    TEST_PHASE("Allocation larger than arena size");
+    TEST_CASE("Allocation larger than arena size");
     void *huge_allocation = arena_alloc(arena, 2048);
     ASSERT(huge_allocation == NULL, "Allocation larger than arena size should fail");
 
@@ -60,17 +60,17 @@ void test_invalid_allocations(void) {
 }
 
 void test_invalid_arena_creation(void) {
-    TEST_CASE("Invalid Arena Creation Scenarios");
+    TEST_PHASE("Invalid Arena Creation Scenarios");
 
-    TEST_PHASE("Zero size arena");
+    TEST_CASE("Zero size arena");
     Arena *zero_size_arena = arena_new_dynamic(0);
     ASSERT(zero_size_arena == NULL, "Zero size arena creation should fail");
 
-    TEST_PHASE("Negative size arena");
+    TEST_CASE("Negative size arena");
     Arena *negative_size_arena = arena_new_dynamic(-1);
     ASSERT(negative_size_arena == NULL, "Negative size arena creation should fail");
 
-    TEST_PHASE("Very large size arena");
+    TEST_CASE("Very large size arena");
     #if SIZE_MAX > 0xFFFFFFFF
         Arena *large_size_arena = arena_new_dynamic(SSIZE_MAX);
         ASSERT(large_size_arena == NULL, "Very large size arena creation should fail on 64-bit systems");
@@ -78,57 +78,57 @@ void test_invalid_arena_creation(void) {
         printf("[INFO] Skipping SSIZE_MAX allocation test on 32-bit system.\n");
     #endif
     
-    TEST_PHASE("NULL memory for static arena");
+    TEST_CASE("NULL memory for static arena");
     Arena *null_memory_arena = arena_new_static(NULL, 1024);
     ASSERT(null_memory_arena == NULL, "Static arena with NULL memory should fail");
 
-    TEST_PHASE("Negative size for static arena");
+    TEST_CASE("Negative size for static arena");
     void *mem = malloc(1024);
     Arena *negative_static_arena = arena_new_static(mem, -1);
     ASSERT(negative_static_arena == NULL, "Static arena with negative size should fail");
     free(mem);
 
-    TEST_PHASE("Free NULL arena");
+    TEST_CASE("Free NULL arena");
     arena_free(NULL); // Should not crash
     ASSERT(true, "Free NULL arena should not crash");
 
-    TEST_PHASE("Reset NULL arena");
+    TEST_CASE("Reset NULL arena");
     arena_reset(NULL); // Should not crash
     ASSERT(true, "Reset NULL arena should not crash");
 }
 
 void test_boundary_conditions(void) {
-    TEST_CASE("Boundary Conditions");
+    TEST_PHASE("Boundary Conditions");
 
-    TEST_PHASE("Arena size just above minimum");
-    size_t min_size = sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE;
+    TEST_CASE("Arena size just above minimum");
+    size_t min_size = ARENA_MIN_SIZE;
     Arena *min_size_arena = arena_new_dynamic(min_size);
     ASSERT(min_size_arena != NULL, "Arena with minimum valid size should succeed");
     arena_free(min_size_arena);
 
-    TEST_PHASE("Arena size just below minimum");
-    Arena *below_min_arena = arena_new_dynamic(min_size - 1);
+    TEST_CASE("Arena size just below minimum");
+    Arena *below_min_arena = arena_new_dynamic(min_size - 1 - sizeof(Arena));
     ASSERT(below_min_arena == NULL, "Arena with size below minimum should fail");
 
-    TEST_PHASE("Static arena with minimum size");
+    TEST_CASE("Static arena with minimum size");
     void *min_memory = malloc(min_size);
     Arena *min_static_arena = arena_new_static(min_memory, min_size);
     ASSERT(min_static_arena != NULL, "Static arena with minimum valid size should succeed");
     free(min_memory);
 
-    TEST_PHASE("Static arena with size below minimum");
+    TEST_CASE("Static arena with size below minimum");
     void *small_memory_bc = malloc(min_size - 1);
     Arena *small_static_arena_bc = arena_new_static(small_memory_bc, min_size - 1);
     ASSERT(small_static_arena_bc == NULL, "Static arena with size below minimum should fail");
     free(small_memory_bc);
 
-    TEST_PHASE("Tail allocation leaving fragment smaller than block header");
+    TEST_CASE("Tail allocation leaving fragment smaller than block header");
     size_t arena_size_frag = 1024;
     Arena *arena_frag = arena_new_dynamic(arena_size_frag);
     ASSERT(arena_frag != NULL, "Arena creation for fragmentation test should succeed");
 
     // Calculate initial free size in tail
-    size_t initial_tail_free = arena_frag->free_size_in_tail;
+    size_t initial_tail_free = free_size_in_tail(arena_frag);
     ASSERT(initial_tail_free > sizeof(Block), "Initial tail should have space");
 
     // Calculate allocation size to leave a small fragment
@@ -142,17 +142,17 @@ void test_boundary_conditions(void) {
     ASSERT(block_frag != NULL, "Allocation leaving small fragment should succeed");
 
     // Check that the 'else' branch in alloc_in_tail was taken
-    ASSERT(arena_frag->free_size_in_tail == 0, "Tail free size should be 0 after small fragment alloc");
+    ASSERT(free_size_in_tail(arena_frag) == 0, "Tail free size should be 0 after small fragment alloc");
 
     arena_free(arena_frag);
 }
 
 void test_full_arena_allocation(void) {
-    TEST_CASE("Allocation in Full Arena");
+    TEST_PHASE("Allocation in Full Arena");
 
     // Create an arena with minimal valid size
     // Size = Arena metadata + one Block metadata + minimal usable buffer
-    size_t min_valid_size = sizeof(Arena) + sizeof(Block) + ARENA_MIN_BUFFER_SIZE;
+    size_t min_valid_size = BLOCK_MIN_SIZE;
     Arena *arena = arena_new_dynamic(min_valid_size);
     ASSERT(arena != NULL, "Arena creation with minimal size should succeed");
     #ifdef DEBUG
@@ -160,7 +160,7 @@ void test_full_arena_allocation(void) {
     print_arena(arena);
     #endif // DEBUG
 
-    TEST_PHASE("Allocate block filling the entire initial tail");
+    TEST_CASE("Allocate block filling the entire initial tail");
     // Try to allocate exactly the minimum buffer size available
     void *first_block = arena_alloc(arena, ARENA_MIN_BUFFER_SIZE - 5);
     ASSERT(first_block != NULL, "Allocation of the first block should succeed");
@@ -170,10 +170,10 @@ void test_full_arena_allocation(void) {
     #endif // DEBUG
 
     // At this point, the free list should be empty, and the tail should have 0 free space.
-    ASSERT(arena->free_blocks == NULL, "Free block list should be empty after filling allocation");
-    ASSERT(arena->free_size_in_tail == 0, "Free size in tail should be 0 after filling allocation");
+    ASSERT(arena_get_free_blocks(arena) == NULL, "Free block list should be empty after filling allocation");
+    ASSERT(free_size_in_tail(arena) == 0, "Free size in tail should be 0 after filling allocation");
 
-    TEST_PHASE("Attempt allocation when no space is left");
+    TEST_CASE("Attempt allocation when no space is left");
     void *second_block = arena_alloc(arena, 1); // Attempt to allocate just one more byte
     ASSERT(second_block == NULL, "Allocation should fail when no space is left");
 
@@ -181,15 +181,15 @@ void test_full_arena_allocation(void) {
 }
 
 void test_static_arena_creation(void) {
-    TEST_CASE("Static Arena Creation");
+    TEST_PHASE("Static Arena Creation");
 
-    TEST_PHASE("Valid static arena creation");
+    TEST_CASE("Valid static arena creation");
     size_t static_arena_size = 2048;
     void *static_memory = malloc(static_arena_size);
     Arena *static_arena = arena_new_static(static_memory, static_arena_size);
     ASSERT(static_arena != NULL, "Static arena creation with valid memory should succeed");
 
-    TEST_PHASE("Allocation from static arena");
+    TEST_CASE("Allocation from static arena");
     void *alloc1 = arena_alloc(static_arena, 512);
     ASSERT(alloc1 != NULL, "Allocation from static arena should succeed");
 
@@ -199,30 +199,36 @@ void test_static_arena_creation(void) {
     void *alloc3 = arena_alloc(static_arena, 1024); // This should fail
     ASSERT(alloc3 == NULL, "Allocation exceeding static arena capacity should fail");
 
+    arena_reset(static_arena);
+
+    void *alloc4 = arena_alloc(static_arena, 2000); // This should fail
+    ASSERT(alloc4 == NULL, "Allocation exceeding static arena capacity should fail");
+    
     arena_free(static_arena);
+
     free(static_memory);
 }
 
 void test_freeing_invalid_blocks(void) {
-    TEST_CASE("Freeing Invalid Blocks");
+    TEST_PHASE("Freeing Invalid Blocks");
 
     // Create an arena
     Arena *arena = arena_new_dynamic(1024);
     ASSERT(arena != NULL, "Arena creation should succeed");
 
-    TEST_PHASE("Freeing a pointer not allocated by the arena");
+    TEST_CASE("Freeing a pointer not allocated by the arena");
     int stack_var = 42;
     arena_free_block(&stack_var); // Should not crash
     ASSERT(true, "Freeing stack variable should not crash");
 
-    TEST_PHASE("Freeing a pointer with valid magic number");
+    TEST_CASE("Freeing a pointer with valid magic number");
     Block fake_block = {0};
-    fake_block.magic = (void *)0xDEAFBEEF; // Valid magic number
+    fake_block.as.occupied.magic = 0xDEAFBEEF; // Valid magic number
     void *fake_data = (char*)&fake_block + sizeof(Block);
     arena_free_block(fake_data); // Should not crash
     ASSERT(true, "Freeing block with valid magic number should not crash");
 
-    TEST_PHASE("Freeing a pointer from a different arena");
+    TEST_CASE("Freeing a pointer from a different arena");
     Arena *another_arena = arena_new_dynamic(1024);
     void *ptr = arena_alloc(another_arena, 32);
     arena_free_block(ptr); // Should not crash
@@ -233,7 +239,7 @@ void test_freeing_invalid_blocks(void) {
 }
 
 void test_calloc() {
-    TEST_CASE("Arena Calloc Functionality");
+    TEST_PHASE("Arena Calloc Functionality");
 
     // Create an arena
     Arena *arena = arena_new_dynamic(1024);
@@ -244,7 +250,7 @@ void test_calloc() {
     print_arena(arena);
     #endif
 
-    TEST_PHASE("Calloc a block and verify zero-initialization");
+    TEST_CASE("Calloc a block and verify zero-initialization");
     size_t num_elements = 10;
     size_t element_size = sizeof(int);
     int *array = (int *)arena_calloc(arena, num_elements, element_size);
@@ -324,11 +330,12 @@ void test_calloc() {
 }
 
 void test_arena_reset_zero(void) {
-    TEST_CASE("Arena Reset Zero");
+    TEST_PHASE("Arena Reset Zero");
 
-    TEST_PHASE("Setup and dirtying memory");
+    TEST_CASE("Setup and dirtying memory");
     size_t arena_size = 4096;
     Arena *arena = arena_new_dynamic(arena_size);
+    size_t arena_init_free_size = free_size_in_tail(arena);
     ASSERT(arena != NULL, "Dynamic arena creation should succeed");
 
     size_t data_size = 256;
@@ -342,12 +349,12 @@ void test_arena_reset_zero(void) {
     ASSERT(ptr2 != NULL, "Allocation 2 should succeed");
     memset(ptr2, 0xBB, data_size);
 
-    TEST_PHASE("Execute reset_zero");
+    TEST_CASE("Execute reset_zero");
     arena_reset_zero(arena);
-    ASSERT(arena->free_size_in_tail > 0, "Arena should have free space after reset_zero");
-    ASSERT(arena->free_size_in_tail == arena_size - sizeof(Arena) - sizeof(Block), "Arena free size should be reset to initial state");
+    ASSERT(free_size_in_tail(arena) > 0, "Arena should have free space after reset_zero");
+    ASSERT(free_size_in_tail(arena) == arena_init_free_size, "Arena free size should be reset to initial state");
 
-    TEST_PHASE("Verify memory zeroing");
+    TEST_CASE("Verify memory zeroing");
 
     int is_zero_1 = 1;
     for (size_t i = 0; i < data_size; i++) {
@@ -367,7 +374,7 @@ void test_arena_reset_zero(void) {
     }
     ASSERT(is_zero_2, "Memory at ptr2 (tail) should be strictly zeroed");
 
-    TEST_PHASE("Verify arena state reset");
+    TEST_CASE("Verify arena state reset");
     unsigned char *new_ptr = (unsigned char *)arena_alloc(arena, data_size);
     ASSERT(new_ptr != NULL, "Re-allocation after reset should succeed");
     ASSERT(new_ptr == ptr1, "Allocator should reset tail to the beginning");
@@ -375,6 +382,200 @@ void test_arena_reset_zero(void) {
 
     arena_free(arena);
 }
+
+
+// --- Alignment Abstraction Layer ---
+#define TEST_BASE_ALIGNMENT 4096
+
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
+    // C11 Standard
+    #include <stdalign.h>
+    #define ALIGN_PREFIX(N) alignas(N)
+    #define ALIGN_SUFFIX(N)
+    #define HAS_NATIVE_ALIGN 1
+
+#elif defined(_MSC_VER)
+    // MSVC
+    #define ALIGN_PREFIX(N) __declspec(align(N))
+    #define ALIGN_SUFFIX(N)
+    #define HAS_NATIVE_ALIGN 1
+
+#elif defined(__GNUC__) || defined(__clang__)
+    // GCC / Clang (Extension)
+    #define ALIGN_PREFIX(N)
+    #define ALIGN_SUFFIX(N) __attribute__((aligned(N)))
+    #define HAS_NATIVE_ALIGN 1
+
+#else
+    // C99 Fallback (No native support)
+    #define ALIGN_PREFIX(N)
+    #define ALIGN_SUFFIX(N)
+    #define HAS_NATIVE_ALIGN 0
+#endif
+
+
+#if HAS_NATIVE_ALIGN
+    #define BUFFER_OVERHEAD 0
+#else
+    #define BUFFER_OVERHEAD TEST_BASE_ALIGNMENT
+#endif
+
+
+static ALIGN_PREFIX(TEST_BASE_ALIGNMENT) 
+char master_test_buffer[16384 + BUFFER_OVERHEAD] 
+ALIGN_SUFFIX(TEST_BASE_ALIGNMENT);
+
+
+static void* get_exact_alignment_ptr(size_t offset) {
+    uintptr_t raw = (uintptr_t)master_test_buffer;
+    uintptr_t base = (raw + (TEST_BASE_ALIGNMENT - 1)) & ~((uintptr_t)TEST_BASE_ALIGNMENT - 1);
+
+    return (void*)(base + offset);
+}
+
+
+static size_t get_buffer_size(void *start) {
+    uintptr_t raw = (uintptr_t)master_test_buffer;
+    uintptr_t end = raw + 16384;
+    uintptr_t aligned_start = (uintptr_t)start;
+
+    return (end - aligned_start);
+}
+
+
+static size_t count_blocks_in_arena(Arena *arena) {
+    size_t count = 0;
+    Block *current = arena_get_first_block(arena);
+    while (current != NULL) {
+        count++;
+        current = next_block(arena, current);
+    }
+    return count;
+}
+
+
+void test_alignment_alloc(void) {
+    void *buffer = get_exact_alignment_ptr(8);
+    size_t size = get_buffer_size(buffer);
+
+    ASSERT(((uintptr_t)(buffer) % 8 == 0),   "Allocation should     be   8-byte aligned");
+    ASSERT(((uintptr_t)(buffer) % 16 != 0),  "Allocation should not be  16-byte aligned");
+    ASSERT(((uintptr_t)(buffer) % 32 != 0),  "Allocation should not be  32-byte aligned");
+    ASSERT(((uintptr_t)(buffer) % 64 != 0),  "Allocation should not be  64-byte aligned");
+    ASSERT(((uintptr_t)(buffer) % 128 != 0), "Allocation should not be 128-byte aligned");
+    ASSERT(((uintptr_t)(buffer) % 256 != 0), "Allocation should not be 256-byte aligned");
+    ASSERT(((uintptr_t)(buffer) % 512 != 0), "Allocation should not be 512-byte aligned");
+    
+    TEST_PHASE("Test alignment requirements with base 8-byte aligned arena");
+
+    // ---------------------------------------------------------
+    TEST_CASE("CASE 1: ReqAlign = 8 (Ideal)");
+    {
+        Arena *arena = arena_new_static_custom(buffer, size, 8);
+        
+        void *p1 = alloc_in_tail_full(arena, 50, 8);
+        ASSERT(p1 != NULL, "Alloc should succeed");
+        ASSERT((uintptr_t)p1 % 8 == 0, "Allocation should be properly 8-byte aligned");
+
+        Block *tail = arena_get_first_block(arena);
+        uintptr_t expected_data = (uintptr_t)tail + sizeof(Block);
+        
+        ASSERT((uintptr_t)p1 == expected_data, "Should correspond to zero padding");
+        ASSERT(count_blocks_in_arena(arena) == 2, "No split should happen, only one block allocated in arena");
+    }
+
+    // ---------------------------------------------------------
+    TEST_CASE("CASE 2: ReqAlign = 16 (Small Shift / XOR Link)");
+    {
+        Arena *arena = arena_new_static_custom(buffer, size, 8);
+        Block *initial_first_block = arena_get_tail(arena);
+        
+        void *p2 = alloc_in_tail_full(arena, 50, 16);
+        ASSERT(p2 != NULL, "Alloc should succeed");
+        ASSERT((uintptr_t)p2 % 16 == 0, "Allocation should be properly 16-byte aligned");
+        
+        uintptr_t raw_data = (uintptr_t)initial_first_block + sizeof(Block);
+        size_t padding = (uintptr_t)p2 - raw_data;
+        ASSERT(padding == 8, "Padding should be exactly 8 bytes");
+   
+        ASSERT(arena_get_first_block(arena) == initial_first_block, "First block should not change (no split)");
+        ASSERT(count_blocks_in_arena(arena) == 2, "No split should happen, only one block allocated in arena");
+    }
+
+    // ---------------------------------------------------------
+    TEST_CASE("CASE 3: ReqAlign = 128 (Big Shift / Split)");
+    {
+        Arena *arena = arena_new_static_custom(buffer, size, 8);
+        
+        void *p3 = alloc_in_tail_full(arena, 50, 128);
+        
+        ASSERT(p3 != NULL, "Alloc should succeed");
+        ASSERT((uintptr_t)p3 % 128 == 0, "Allocation should be properly 128-byte aligned");
+
+        Block *new_first_block = arena_get_first_block(arena);
+        ASSERT(new_first_block != p3 - sizeof(Block), "First block pointer MUST change (split happened)");
+        ASSERT(count_blocks_in_arena(arena) == 3, "Split should happen, two blocks allocated in arena");
+    }
+
+    
+    TEST_PHASE("Test Tail Absorption (Fill remaining space)");
+
+    // ---------------------------------------------------------
+    TEST_CASE("CASE 4: ReqAlign = 8 (Ideal + Absorb Tail)");
+    {
+        Arena *arena = arena_new_static_custom(buffer, size, 8);
+        size_t capacity = free_size_in_tail(arena);
+        void *p4 = alloc_in_tail_full(arena, capacity, 8);
+        
+        ASSERT(p4 != NULL, "Alloc should succeed");
+        ASSERT((uintptr_t)p4 % 8 == 0, "Allocation should be properly 8-byte aligned");
+
+        ASSERT(count_blocks_in_arena(arena) == 1, "Should absorb tail, leaving 1 block total");
+        ASSERT(free_size_in_tail(arena) == 0, "Free space should be 0");
+    }
+
+    // ---------------------------------------------------------
+    TEST_CASE("CASE 5: ReqAlign = 16 (Small Shift + Absorb Tail)");
+    {
+        Arena *arena = arena_new_static_custom(buffer, size, 8);
+        size_t total_free = free_size_in_tail(arena);
+        
+        size_t padding = 8;
+        size_t alloc_size = total_free - padding;
+
+        void *p5 = alloc_in_tail_full(arena, alloc_size, 16);
+        
+        ASSERT(p5 != NULL, "Alloc should succeed");
+        ASSERT((uintptr_t)p5 % 16 == 0, "Alignment check");
+        
+        ASSERT(count_blocks_in_arena(arena) == 1, "Should absorb tail with internal padding, 1 block total");
+        ASSERT(free_size_in_tail(arena) == 0, "Free space should be 0");
+    }
+
+    // ---------------------------------------------------------
+    TEST_CASE("CASE 6: ReqAlign = 128 (Big Shift/Split + Absorb Tail)");
+    {
+        Arena *arena = arena_new_static_custom(buffer, size, 8);
+        size_t total_free = free_size_in_tail(arena);
+        
+        size_t padding = 103;
+        
+        size_t alloc_size = total_free - padding;
+
+        void *p6 = alloc_in_tail_full(arena, alloc_size, 128);
+        
+        ASSERT(p6 != NULL, "Alloc should succeed");
+        ASSERT((uintptr_t)p6 % 128 == 0, "Alignment check");
+
+        ASSERT(count_blocks_in_arena(arena) == 2, "Split happened + Tail absorbed = 2 blocks total");
+        ASSERT(free_size_in_tail(arena) == 0, "Free space should be 0");
+        
+        #ifdef DEBUG
+        print_arena(arena);
+        #endif
+    }
+}
+
 
 int main(void) {
     test_invalid_allocations();
@@ -385,6 +586,7 @@ int main(void) {
     test_freeing_invalid_blocks();
     test_calloc();
     test_arena_reset_zero();
+    test_alignment_alloc();
     
     print_test_summary();
     return tests_failed > 0 ? 1 : 0;

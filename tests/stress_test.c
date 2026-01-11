@@ -10,7 +10,7 @@
  * Imitates a real scenario of dynamic object graph management
  */
 void test_complex_allocation_pattern(void) {
-    TEST_CASE("Complex Allocation Pattern");
+    TEST_PHASE("Complex Allocation Pattern");
 
     // Create an arena
     Arena *arena = arena_new_dynamic(ARENA_SIZE);
@@ -22,7 +22,7 @@ void test_complex_allocation_pattern(void) {
     int alloc_errors = 0;
     int pattern_errors = 0;
     
-    TEST_PHASE("Initial allocations");
+    TEST_CASE("Initial allocations");
     // Allocate objects of various sizes
     for (int i = 0; i < 50; i++) {
         size_t size = 20 + (i * 7) % 180;
@@ -59,7 +59,7 @@ void test_complex_allocation_pattern(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
     
-    TEST_PHASE("Free every third object");
+    TEST_CASE("Free every third object");
     // Free every third object
     int freed_count = 0;
     
@@ -79,7 +79,7 @@ void test_complex_allocation_pattern(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
 
-    TEST_PHASE("Allocate small objects");
+    TEST_CASE("Allocate small objects");
     // Try to allocate small objects
     int small_alloc_count = 0;
     pattern_errors = 0;
@@ -118,7 +118,7 @@ void test_complex_allocation_pattern(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
     
-    TEST_PHASE("Allocate large objects");
+    TEST_CASE("Allocate large objects");
     // Try to allocate large objects
     int large_alloc_count = 0;
     pattern_errors = 0;
@@ -157,7 +157,7 @@ void test_complex_allocation_pattern(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
 
-    TEST_PHASE("Random deallocation");
+    TEST_CASE("Random deallocation");
     // Randomly free objects
     freed_count = 0;
     int to_free = allocated / 2;
@@ -179,7 +179,7 @@ void test_complex_allocation_pattern(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
     
-    TEST_PHASE("Fragmentation stress test");
+    TEST_CASE("Fragmentation stress test");
     // Free even-indexed objects to create fragmentation
     freed_count = 0;
     
@@ -197,9 +197,10 @@ void test_complex_allocation_pattern(void) {
     #ifdef DEBUG
     printf("Freed %d objects to fragment memory\n", freed_count);
     print_fancy(arena, 100);
+    print_arena(arena);
     #endif // DEBUG
     
-    TEST_PHASE("Allocation in fragmented arena");
+    TEST_CASE("Allocation in fragmented arena");
     // Try to allocate in fragmented memory
     int frag_alloc_count = 0;
     pattern_errors = 0;
@@ -251,10 +252,10 @@ void test_complex_allocation_pattern(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
     
-    TEST_PHASE("Test arena reset");
+    TEST_CASE("Test arena reset");
     // Reset the arena and verify it's usable
     arena_reset(arena);
-    ASSERT(arena->free_size_in_tail > 0, "Arena should have free space after reset");
+    ASSERT(free_size_in_tail(arena) > 0, "Arena should have free space after reset");
     
     #ifdef DEBUG
     print_fancy(arena, 100);
@@ -329,8 +330,8 @@ void test_block_merging(void) {
     #endif // DEBUG
 
     // Verify that a new free block was created
-    ASSERT(arena->free_blocks != NULL, "Should have a free block from remaining space");
-    ASSERT(arena->free_blocks->size == ARENA_MIN_BUFFER_SIZE, "Free block should have exactly MIN_BUFFER_SIZE");
+    ASSERT(arena_get_free_blocks(arena) != NULL, "Should have a free block from remaining space");
+    ASSERT(get_size(arena_get_free_blocks(arena)) == ARENA_MIN_BUFFER_SIZE, "Free block should have exactly MIN_BUFFER_SIZE");
 
     // Free the smaller block
     arena_free_block(smaller_block);
@@ -345,7 +346,7 @@ void test_block_merging(void) {
     print_fancy(arena, 100);
     #endif // DEBUG
 
-    ASSERT(arena->free_blocks == NULL, "Should not have any free blocks after allocation");
+    ASSERT(arena_get_free_blocks(arena) == NULL, "Should not have any free blocks after allocation");
 
     arena_free(arena);
 }
@@ -379,8 +380,8 @@ void test_llrb_detach_scenarios(void) {
     #ifdef DEBUG
     print_fancy(arena_root, 100);
     #endif // DEBUG
-    ASSERT(arena_root->free_blocks != NULL, "[Detach Root] Free list should contain block A");
-    ASSERT(arena_root->free_blocks->size == 112, "[Detach Root] Root of free list should be block A");
+    ASSERT(arena_get_free_blocks(arena_root) != NULL, "[Detach Root] Free list should contain block A");
+    ASSERT(get_size(arena_get_free_blocks(arena_root)) == 112, "[Detach Root] Root of free list should be block A");
 
     // Allocate the same size again (100). This should find block A and detach it.
     void *ptr_c_root = arena_alloc(arena_root, 100);
@@ -391,7 +392,7 @@ void test_llrb_detach_scenarios(void) {
     ASSERT(ptr_c_root == ptr_a_root, "[Detach Root] Reused block should be the same memory as A");
 
     // The free tree should now be empty
-    ASSERT(arena_root->free_blocks == NULL, "[Detach Root] Free list should be empty after detaching root");
+    ASSERT(arena_get_free_blocks(arena_root) == NULL, "[Detach Root] Free list should be empty after detaching root");
 
     arena_free(arena_root);
 
