@@ -1376,10 +1376,10 @@ static inline Arena *get_parent_arena(Block *block) {
     printf("    Detector analysis: \n");
     printf("      LSB (is nested flag): %s\n", (val & 1) ? "SET" : "NOT SET");
     printf("      Offset to arena header: %zu bytes\n", val >> 1);
-    if (val & 1) return (Arena *)((char *)block - (val >> 1));
+    if (val & 1) return (Arena *)((char *)prev - (val >> 1));
 
-    printf("    Arena address calculated: %p\n", (void *)((char *)block - sizeof(Arena)));
-    return (Arena *)((char *)block - sizeof(Arena));
+    printf("    Arena address calculated: %p\n", (void *)((char *)prev - sizeof(Arena)));
+    return (Arena *)((char *)prev - sizeof(Arena));
 }
 
 
