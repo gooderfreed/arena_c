@@ -1269,7 +1269,7 @@ static inline Arena *get_parent_arena(Block *block) {
      * To get more understanding whats going on go to 'arena_new_static_custom'
      * function. 
     */
-    uintptr_t *detector_spot = (uintptr_t *)((char *)block - sizeof(uintptr_t));
+    uintptr_t *detector_spot = (uintptr_t *)((char *)prev - sizeof(uintptr_t));
     uintptr_t val = *detector_spot;
     
     if (val & 1) return (Arena *)((char *)prev - (val >> 1));
