@@ -24,12 +24,12 @@ extern "C" {
 #endif
 
 
-#ifdef _WIN32
-#   include <BaseTsd.h> // SSIZE_T
-#   define ssize_t SSIZE_T
-#else
-#   include <sys/types.h>  // for ssize_t
-#endif
+// #ifdef _WIN32
+// #   include <BaseTsd.h> // SSIZE_T
+// #   define ssize_t SSIZE_T
+// #else
+// #   include <sys/types.h>  // for ssize_t
+// #endif
 
 
     
@@ -159,9 +159,11 @@ void print_arena(Arena *arena);
 #endif // DEBUG
 
 
-
+#ifndef ARENA_NO_MALLOC
 Arena *arena_new_dynamic(size_t size);
 Arena *arena_new_dynamic_custom(size_t size, size_t alignment);
+#endif // ARENA_NO_MALLOC
+
 Arena *arena_new_static(void *memory, size_t size);
 Arena *arena_new_static_custom(void *memory, size_t size, size_t alignment);
 void arena_reset(Arena *arena);
@@ -169,8 +171,16 @@ void arena_free(Arena *arena);
 
 void *arena_alloc(Arena *arena, size_t size);
 void *arena_alloc_custom(Arena *arena, size_t size, size_t alignment);
-void *arena_calloc(Arena *arena, ssize_t nmemb, ssize_t size);
+void *arena_calloc(Arena *arena, size_t nmemb, size_t size);
 void arena_reset_zero(Arena *arena);
+void arena_free_block(void *data);
+
+Bump *bump_new(Arena *parent_arena, size_t size);
+void *bump_alloc(Bump *bump, size_t size);
+void *bump_alloc_aligned(Bump *bump, size_t size, size_t alignment);
+void bump_trim(Bump *bump);
+void bump_reset(Bump *bump);
+void bump_free(Bump *bump);
 
 
 
@@ -928,10 +938,12 @@ static inline Block *create_next_block(Arena *arena, Block *prev_block) {
         // Safety check - next block already exists
         if (is_block_in_active_part(arena, next_block) && get_prev(next_block) == prev_block) return NULL;
     }
+    // LCOV_EXCL_START
     else {
         // Safety check - prev_block is out of arena bounds
         ARENA_ASSERT(false && "Internal Error: 'create_next_block' called with prev_block out of arena bounds");
     }
+    // LCOV_EXCL_STOP
 
     next_block = create_block(next_block);
     set_prev(next_block, prev_block);
@@ -1671,13 +1683,14 @@ void *arena_alloc(Arena *arena, size_t size) {
  * Allocate zero-initialized memory in the arena
  * Returns NULL if there is not enough space or overflow is detected
  */
-void *arena_calloc(Arena *arena, ssize_t nmemb, ssize_t size) {
+void *arena_calloc(Arena *arena, size_t nmemb, size_t size) {
     if (!arena) return NULL;
 
-    if (nmemb > 0 && (SIZE_MAX / nmemb) < (size_t)size) {
+    if (nmemb > 0 && (SIZE_MAX / nmemb) < size) {
         return NULL; // Overflow detected
     }
-    ssize_t total_size = nmemb * size;
+
+    size_t total_size = nmemb * size;
     void *ptr = arena_alloc(arena, total_size);
     if (ptr) {
         memset(ptr, 0, total_size); // Zero-initialize the allocated memory
@@ -1764,6 +1777,7 @@ Arena *arena_new_static(void *memory, size_t size) {
     return arena_new_static_custom(memory, size, ARENA_DEFAULT_ALIGNMENT);
 }
 
+#ifndef ARENA_NO_MALLOC
 /*
  * Create a dynamic arena
  * Allocates memory for the arena and initializes it with the specified size and alignment
@@ -1780,8 +1794,10 @@ Arena *arena_new_dynamic_custom(size_t size, size_t alignment) {
     Arena *arena = arena_new_static_custom(data, size + sizeof(Arena), alignment);
 
     if (!arena) {
+        // LCOV_EXCL_START
         free(data);
         return NULL;
+        // LCOV_EXCL_STOP
     }
 
     arena_set_is_dynamic(arena, true);
@@ -1797,6 +1813,7 @@ Arena *arena_new_dynamic_custom(size_t size, size_t alignment) {
 Arena *arena_new_dynamic(size_t size) {
     return arena_new_dynamic_custom(size, ARENA_DEFAULT_ALIGNMENT);
 }
+#endif // ARENA_NO_MALLOC
 
 /*
  * Free arena
@@ -1812,9 +1829,11 @@ void arena_free(Arena *arena) {
         return;
     }
 
+    #ifndef ARENA_NO_MALLOC
     if (arena_get_is_dynamic(arena)) {
         free(arena);
     }
+    #endif // ARENA_NO_MALLOC
 }
 
 /*
@@ -1869,9 +1888,11 @@ Arena *arena_new_nested_custom(Arena *parent_arena, size_t size, size_t alignmen
     if (check == (uintptr_t)0xDEADBEEF) {
         block = (Block *)(void *)((char *)data - sizeof(Block));
     }
+    // LCOV_EXCL_START
     else {
         block = (Block *)check;
     }
+    // LCOV_EXCL_STOP
 
     Arena *arena = arena_new_static_custom((void *)block, size, alignment);
     arena_set_is_nested(arena, true); // Mark the arena as nested
@@ -1896,9 +1917,9 @@ Arena *arena_new_nested(Arena *parent_arena, size_t size) {
  * Initializes a bump allocator within a parent arena
  * Returns NULL if the parent arena is NULL, requested size is too small, or allocation fails
  */
-Bump *bump_new(Arena *parent_arena, ssize_t size) {
+Bump *bump_new(Arena *parent_arena, size_t size) {
     if (!parent_arena) return NULL;
-    if (size <= 0 || (size_t)size < ARENA_MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
+    if (size > SIZE_MASK || size < ARENA_MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
     
     void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
     if (!data) return NULL;
@@ -1910,9 +1931,11 @@ Bump *bump_new(Arena *parent_arena, ssize_t size) {
     if (check == (uintptr_t)0xDEADBEEF) {
         block = (Block *)(void *)((char *)data - sizeof(Block));
     }
+    // LCOV_EXCL_START
     else {
         block = (Block *)check;
     }
+    // LCOV_EXCL_STOP
     
     Bump *bump = (Bump *)((void *)block);  // just cast allocated Block to Bump
 

@@ -131,7 +131,7 @@ void test_bump_allocation() {
     ASSERT(ptr9 == NULL, "Aligned allocation that exactly matches bump capacity should fail");
 
     bump_reset(bump);
-    void *ptr10 = bump_alloc(bump, (ssize_t)SIZE_MAX); // Cast for warning suppression if needed
+    void *ptr10 = bump_alloc(bump, SIZE_MAX); // Cast for warning suppression if needed
     ASSERT(ptr10 == NULL, "Huge allocation must fail gracefully");
 
     TEST_PHASE("Free Bump Allocator");
