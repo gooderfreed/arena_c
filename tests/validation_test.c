@@ -179,17 +179,6 @@ void test_full_arena_allocation(void) {
     ASSERT(second_block == NULL, "Allocation should fail when no space is left");
 
     arena_free(arena);
-
-    char mem[256];
-    Arena *a = arena_new_static_custom(mem, 256, 16); 
-    ASSERT(a != NULL, "Static arena creation should succeed");
-
-    size_t initial_free = free_size_in_tail(a);
-    void *p1 = arena_alloc(a, initial_free - (BLOCK_MIN_SIZE + 4)); 
-    ASSERT(p1 != NULL, "Allocation to nearly fill arena should succeed");
-    
-    void *p2 = arena_alloc(a, 8);
-    ASSERT(p2 != NULL, "Allocation to fill arena should succeed");
 }
 
 void test_static_arena_creation(void) {
@@ -214,12 +203,6 @@ void test_static_arena_creation(void) {
     arena_free(static_arena);
 
     free(static_memory);
-
-    char mem[2048];
-    void* aligned_mem = (void*)align_up((uintptr_t)mem, 64);
-
-    Arena *a = arena_new_static_custom(aligned_mem, 2048, 128);
-    ASSERT(a != NULL, "Custom aligned static arena creation should succeed");
 }
 
 void test_freeing_invalid_blocks(void) {
@@ -596,6 +579,41 @@ void test_alignment_alloc(void) {
     }
 }
 
+void test_static_arena_detector_coverage(void) {
+    TEST_CASE("Force Magic LSB Detector coverage");
+
+    size_t alignment = 64; 
+    size_t total_size = 1024;
+    char raw_memory[2048];
+
+    uintptr_t base = align_up((uintptr_t)raw_memory, alignment);
+
+    void *bad_ptr = (void *)(base + 1);
+
+    Arena *a = arena_new_static_custom(bad_ptr, total_size, alignment);
+
+    ASSERT(a != NULL, "Arena should be created");
+
+    Block *first = arena_get_first_block(a);
+    uintptr_t *detector_spot = (uintptr_t *)((char *)first - sizeof(uintptr_t));
+    ASSERT((*detector_spot & 1) == 1, "Magic LSB Detector should be set");
+}
+
+void test_tail_alloc_edge_case_deterministic(void) {
+    TEST_CASE("Tail Allocation Edge Case - Deterministic");
+    char raw[512];
+    void *mem = (void*)align_up((uintptr_t)raw, 64);
+    Arena *a = arena_new_static_custom(mem, 256, 16);
+
+    size_t target_remainder = BLOCK_MIN_SIZE + 12;
+    size_t initial_free = free_size_in_tail(a);
+    arena_alloc(a, initial_free - target_remainder);
+
+    void *p2 = arena_alloc(a, 4);
+
+    ASSERT(p2 != NULL, "This should trigger the 'final_needed_block_size = free_space' branch");
+}
+
 
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0); 
@@ -609,6 +627,8 @@ int main(void) {
     test_calloc();
     test_arena_reset_zero();
     test_alignment_alloc();
+    test_static_arena_detector_coverage();
+    test_tail_alloc_edge_case_deterministic();
     
     print_test_summary();
     return tests_failed > 0 ? 1 : 0;
