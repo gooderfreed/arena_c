@@ -179,6 +179,17 @@ void test_full_arena_allocation(void) {
     ASSERT(second_block == NULL, "Allocation should fail when no space is left");
 
     arena_free(arena);
+
+    char mem[256];
+    Arena *a = arena_new_static_custom(mem, 256, 16); 
+    ASSERT(a != NULL, "Static arena creation should succeed");
+
+    size_t initial_free = free_size_in_tail(a);
+    void *p1 = arena_alloc(a, initial_free - (BLOCK_MIN_SIZE + 4)); 
+    ASSERT(p1 != NULL, "Allocation to nearly fill arena should succeed");
+    
+    void *p2 = arena_alloc(a, 8);
+    ASSERT(p2 != NULL, "Allocation to fill arena should succeed");
 }
 
 void test_static_arena_creation(void) {
@@ -203,6 +214,12 @@ void test_static_arena_creation(void) {
     arena_free(static_arena);
 
     free(static_memory);
+
+    char mem[2048];
+    void* aligned_mem = (void*)align_up((uintptr_t)mem, 64);
+
+    Arena *a = arena_new_static_custom(aligned_mem, 2048, 128);
+    ASSERT(a != NULL, "Custom aligned static arena creation should succeed");
 }
 
 void test_freeing_invalid_blocks(void) {

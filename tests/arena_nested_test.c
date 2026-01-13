@@ -100,7 +100,6 @@ void test_nested_freeing(void) {
     TEST_CASE("Freeing Nested Arena through Parent Arena");
     size_t parent_arena_size = 8192;
     Arena *parent_arena = arena_new_dynamic(parent_arena_size);
-    printf("Created parent arena at %p\n", (void *)parent_arena);
     ASSERT(parent_arena != NULL, "Parent arena should be created successfully");
     
     size_t parent_free_before = free_size_in_tail(parent_arena);
@@ -123,7 +122,7 @@ void test_nested_freeing(void) {
     ASSERT(check_nested != NULL, "Should be able to create new nested arena after freeing previous nested arena");
     arena_free(check_nested);
     ASSERT(true, "Freeing allocation from parent arena should succeed");
-    
+
     
     Arena *another_nested = arena_new_nested(parent_arena, nested_arena_size);
     ASSERT(another_nested != NULL, "Another nested arena should be created successfully within parent arena");
