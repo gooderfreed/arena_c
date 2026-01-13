@@ -1378,6 +1378,7 @@ static inline Arena *get_parent_arena(Block *block) {
     printf("      Offset to arena header: %zu bytes\n", val >> 1);
     if (val & 1) return (Arena *)((char *)block - (val >> 1));
 
+    printf("    Arena address calculated: %p\n", (void *)((char *)block - sizeof(Arena)));
     return (Arena *)((char *)block - sizeof(Arena));
 }
 
