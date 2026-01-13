@@ -87,6 +87,8 @@ ARENA_STATIC_ASSERT(ARENA_MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positi
 
 #define block_data(block) ((void *)((char *)(block) + sizeof(Block)))
 
+#include <stdio.h>
+
 
 // Structure type declarations for memory management
 typedef struct Block Block;
@@ -1335,8 +1337,10 @@ static inline Arena *get_parent_arena(Block *block) {
      * We traverse the 'prev' pointers, which point to physical neighbors in memory.
      * We are looking for a block that can tell us who its owner is.
     */
+    printf("Getting parent arena for block at %p\n", (void *)block);
     while (get_prev(prev) != NULL) {
         prev = get_prev(prev);
+        printf("  Checking previous block at %p\n", (void *)prev);
 
         /* 
          * We found an occupied block. But wait!
@@ -1345,12 +1349,16 @@ static inline Arena *get_parent_arena(Block *block) {
          * We must check the 'IS_NESTED' flag to ensure we don't accidentally 
          * treat a nested arena as a simple block.
         */
+        printf("    Found occupied block at %p\n", (void *)prev);
+        printf("    Is nested arena: %s\n", arena_get_is_nested((Arena*)(void *)(prev)) ? "YES" : "NO");
+        printf("    Is free block: %s\n", get_is_free(prev) ? "YES" : "NO");
         if (!get_is_free(prev) && !arena_get_is_nested((Arena*)(void *)(prev))) {
             return get_arena(prev);
         }
 
         // If it's a nested arena or a free block, we keep walking back.
     }
+    printf("  Reached the first block in the arena segment.\n");
 
     /*
      * Logic: Terminal Case - The First Block
@@ -1359,9 +1367,15 @@ static inline Arena *get_parent_arena(Block *block) {
      * To get more understanding whats going on go to 'arena_new_static_custom'
      * function. 
     */
+    printf("  Checking terminal case for block at %p\n", (void *)block);
+    printf("    Detector spot at %p\n", (void *)((char *)block - sizeof(uintptr_t)));
+    printf("    Detector value: 0x%zx\n", *(uintptr_t *)((char *)block - sizeof(uintptr_t)));
     uintptr_t *detector_spot = (uintptr_t *)((char *)block - sizeof(uintptr_t));
     uintptr_t val = *detector_spot;
     
+    printf("    Detector analysis: \n");
+    printf("      LSB (is nested flag): %s\n", (val & 1) ? "SET" : "NOT SET");
+    printf("      Offset to arena header: %zu bytes\n", val >> 1);
     if (val & 1) return (Arena *)((char *)block - (val >> 1));
 
     return (Arena *)((char *)block - sizeof(Arena));

@@ -124,9 +124,11 @@ void test_nested_freeing(void) {
     Arena *another_nested = arena_new_nested(parent_arena, nested_arena_size);
     ASSERT(another_nested != NULL, "Another nested arena should be created successfully within parent arena");
     arena_free_block(ptr);
+    ASSERT(true, "Freeing allocation from parent arena should succeed");
     arena_free(another_nested);
+    ASSERT(true, "Freeing another nested arena should succeed");
 
-    
+
     arena_free(parent_arena);
     ASSERT(true, "Parent arena should be freed successfully");
 }
