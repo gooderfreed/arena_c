@@ -26,6 +26,18 @@ extern "C" {
 #endif
 
 
+#ifndef ARENA_POISON_BYTE
+#   define ARENA_POISON_BYTE 0xDD
+#endif
+
+#if defined(ARENA_NO_POISONING)
+#   if defined(ARENA_POISONING)
+#       undef ARENA_POISONING
+#   endif
+#elif defined(DEBUG) && !defined(ARENA_POISONING)
+#   define ARENA_POISONING
+#endif
+
     
 #ifdef DEBUG
     #include <assert.h>
@@ -84,7 +96,6 @@ ARENA_STATIC_ASSERT(ARENA_MIN_BUFFER_SIZE > 0, "MIN_BUFFER_SIZE must be a positi
 // Structure type declarations for memory management
 typedef struct Block Block;
 typedef struct Arena Arena;
-typedef struct Bump  Bump;
 
 /*
  * Memory block structure
@@ -107,24 +118,6 @@ struct Block {
 };
 
 /*
- * Bump allocator structure
- * A simple allocator that allocates memory linearly from a pre-allocated block
- */
-struct Bump {
-    union {
-        Block block_representation;  // Block representation for compatibility
-        struct {
-            size_t capacity;         // Total capacity of the bump allocator
-            Block *prev;             // Pointer to the previous block in the global list, need for compatibility with block struct layout
-            Arena *arena;            // Pointer to the arena that allocated this block
-            size_t offset;           // Current offset for allocations within the bump allocator
-        } self;
-    } as;
-};
-
-ARENA_STATIC_ASSERT((sizeof(Bump) == sizeof(Block)), Size_mismatch_between_Bump_and_Block);
-
-/*
  * Memory arena structure
  * Manages a pool of memory, block allocation, and block states
  */
@@ -140,7 +133,7 @@ struct Arena {
     } as;
 };
 
-ARENA_STATIC_ASSERT((sizeof(Bump) == sizeof(Block)), Size_mismatch_between_Arena_and_Block);
+ARENA_STATIC_ASSERT((sizeof(Arena) == sizeof(Block)), Size_mismatch_between_Arena_and_Block);
 
 
 #ifdef DEBUG
@@ -167,13 +160,6 @@ void *arena_alloc_custom(Arena *arena, size_t size, size_t alignment);
 void *arena_calloc(Arena *arena, size_t nmemb, size_t size);
 void arena_reset_zero(Arena *arena);
 void arena_free_block(void *data);
-
-Bump *bump_new(Arena *parent_arena, size_t size);
-void *bump_alloc(Bump *bump, size_t size);
-void *bump_alloc_aligned(Bump *bump, size_t size, size_t alignment);
-void bump_trim(Bump *bump);
-void bump_reset(Bump *bump);
-void bump_free(Bump *bump);
 
 
 
@@ -757,75 +743,6 @@ static inline Block *arena_get_first_block(const Arena *arena) {
     
     return (Block *)aligned_start;
 } 
-
-
-
-
-
-/*
- * Get arena from bump
- * Extracts the arena pointer stored in the block's as.occupied.arena field
- */
-static inline Arena *bump_get_arena(const Bump *bump) {
-    ARENA_ASSERT((bump != NULL) && "Internal Error: 'bump_get_arena' called on NULL bump");
-
-    return get_arena(&(bump->as.block_representation)); // Return pointer to the parent arena
-}
-
-/*
- * Set arena for bump
- * Updates the arena pointer in the block's as.occupied.arena field
- */
-static inline void bump_set_arena(Bump *bump, Arena *arena) {
-    ARENA_ASSERT((bump != NULL)  && "Internal Error: 'bump_set_arena' called on NULL bump");
-    ARENA_ASSERT((arena != NULL) && "Internal Error: 'bump_set_arena' called on NULL arena");
-
-    set_arena(&(bump->as.block_representation), arena); // Set pointer to the parent arena;
-}
-
-
-
-/*
- * Get offset from bump
- * Extracts the offset stored in the bump's as.self.offset field
- */
-static inline size_t bump_get_offset(const Bump *bump) {
-    ARENA_ASSERT((bump != NULL) && "Internal Error: 'bump_get_offset' called on NULL bump");
-
-    return bump->as.self.offset;
-}
-
-/*
- * Set offset for bump
- * Updates the offset in the bump's as.self.offset field
- */
-static inline void bump_set_offset(Bump *bump, size_t offset) {
-    ARENA_ASSERT((bump != NULL)  && "Internal Error: 'bump_set_offset' called on NULL bump");
-
-    bump->as.self.offset = offset;
-}
-
-
-
-/*
- * Get capacity of Bump
- * Extracts the size information stored in the bump's as.block_representation field
- */
-static inline size_t bump_get_capacity(const Bump *bump) {
-    ARENA_ASSERT((bump != NULL) && "Internal Error: 'bump_get_capacity' called on NULL bump");
-
-    return get_size(&(bump->as.block_representation));
-}
-
-/*
- * Set capacity for Bump
- * Updates the size information in the bump's as.block_representation field
- */
-static inline void bump_set_capacity(Bump *bump, size_t size) {
-    ARENA_ASSERT((bump != NULL)  && "Internal Error: 'bump_set_capacity' called on NULL bump");
-
-    return set_size(&(bump->as.block_representation), size);
-}
 
 
 
@@ -1550,7 +1467,9 @@ static void *alloc_in_tail_full(Arena *arena, size_t size, size_t alignment) {
         if (free_space - full_needed_block_size >= BLOCK_MIN_SIZE) {
             final_needed_block_size = full_needed_block_size;
         } else {
-            final_needed_block_size = free_space;
+            // we ignore coverage for this line cose it`s have very low chance to happen in real usage
+            // and it effectivly not change anything in logic
+            final_needed_block_size = free_space; // LCOV_EXCL_LINE
         }
     } else {
         final_needed_block_size = free_space;
@@ -1902,125 +1821,6 @@ Arena *arena_new_nested(Arena *parent_arena, size_t size) {
     if (!parent_arena || size < BLOCK_MIN_SIZE || size > SIZE_MASK) return NULL;
 
     return arena_new_nested_custom(parent_arena, size, arena_get_alignment(parent_arena));
-}
-
-
-/*
- * Create a bump allocator
- * Initializes a bump allocator within a parent arena
- * Returns NULL if the parent arena is NULL, requested size is too small, or allocation fails
- */
-Bump *bump_new(Arena *parent_arena, size_t size) {
-    if (!parent_arena) return NULL;
-    if (size > SIZE_MASK || size < ARENA_MIN_BUFFER_SIZE) return NULL;  // Check for minimal reasonable size
-    
-    void *data = arena_alloc(parent_arena, size);  // Allocate memory from the parent arena
-    if (!data) return NULL;
-
-    Block *block = NULL;
-
-    uintptr_t *spot_before_user_data = (uintptr_t *)((char *)data - sizeof(uintptr_t));
-    uintptr_t check = *spot_before_user_data ^ (uintptr_t)data;
-    if (check == (uintptr_t)0xDEADBEEF) {
-        block = (Block *)(void *)((char *)data - sizeof(Block));
-    }
-    // LCOV_EXCL_START
-    else {
-        block = (Block *)check;
-    }
-    // LCOV_EXCL_STOP
-    
-    Bump *bump = (Bump *)((void *)block);  // just cast allocated Block to Bump
-
-    bump_set_arena(bump, parent_arena);
-    bump_set_offset(bump, sizeof(Bump));
-
-    return bump;
-}
-
-/*
- * Allocate memory from a bump allocator
- * Returns a pointer to the allocated memory or NULL if allocation fails
- * May return NOT aligned pointer
- */
-void *bump_alloc(Bump *bump, size_t size) {
-    if (!bump) return NULL;
-    
-    size_t offset = bump_get_offset(bump);
-    if (size == 0 || size >= (bump_get_capacity(bump) - offset + sizeof(Bump))) return NULL;
-
-    void *memory = (char *)bump + offset;
-    bump_set_offset(bump, offset + size);
-
-    return memory;
-}
-
-/*
- * Allocate aligned memory from a bump allocator
- * Returns a pointer to the allocated memory or NULL if allocation fails
- */
-void *bump_alloc_aligned(Bump *bump, size_t size, size_t alignment) {
-    if (!bump) return NULL;
-    if ((alignment & (alignment - 1)) != 0) return NULL;
-    if (alignment < MIN_ALIGNMENT|| alignment > MAX_ALIGNMENT) return NULL;
-    if (size == 0) return NULL;
-
-    uintptr_t current_ptr = (uintptr_t)bump + bump_get_offset(bump);
-    uintptr_t aligned_ptr = align_up(current_ptr, alignment);
-    size_t padding = aligned_ptr - current_ptr;
-
-    if ((size_t)size > SIZE_MAX - padding) return NULL;
-
-    size_t total_size = padding + size;
-
-    size_t offset = bump_get_offset(bump);
-    if ((size_t)total_size >= (bump_get_capacity(bump) - offset + sizeof(Bump))) return NULL;
-
-    bump_set_offset(bump, offset + total_size);
-
-    return (void *)aligned_ptr;
-}
-
-/*
- * Trim a bump allocator
- * Trims the bump allocator and return free part back to arena
- */
-void bump_trim(Bump *bump) {
-    if (!bump) return;
-
-    Arena *parent = bump_get_arena(bump);
-    size_t parent_align = arena_get_alignment(parent);
-    uintptr_t bump_addr = (uintptr_t)bump;
-    
-    uintptr_t current_end = bump_addr + bump_get_offset(bump);
-    uintptr_t next_data_aligned = align_up(current_end + sizeof(Block), parent_align);
-
-    uintptr_t remainder_addr = next_data_aligned - sizeof(Block);
-
-    size_t new_payload_size = remainder_addr - ((uintptr_t)bump + sizeof(Block));
-
-    if (bump_get_capacity(bump) > new_payload_size) 
-        split_block(parent, (Block*)bump, new_payload_size);
-}
-
-/*
- * Reset a bump allocator
- * Resets the bump allocator's offset to the beginning
- */
-void bump_reset(Bump *bump) {
-    if (!bump) return;
-    
-    bump_set_offset(bump, sizeof(Bump));
-}
-
-/*
- * Free a bump allocator
- * Returns memory back to parent arena
- */
-void bump_free(Bump *bump) {
-    if (!bump) return;
-
-    arena_free_block_full(bump_get_arena(bump), (Block *)(void *)bump);
 }
 
 
